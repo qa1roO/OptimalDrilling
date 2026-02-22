@@ -16,15 +16,12 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Drilling Visualization")
         self.setGeometry(100, 100, 1400, 800)
 
-        # Центральный виджет
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
 
-        # Главный вертикальный layout
         main_layout = QVBoxLayout()
         central_widget.setLayout(main_layout)
 
-        # ===== Верхняя панель управления =====
         control_layout = QHBoxLayout()
 
         self.start_button = QPushButton("Start")
@@ -37,24 +34,19 @@ class MainWindow(QMainWindow):
 
         main_layout.addLayout(control_layout)
 
-        # ===== Основная область (сцена + графики) =====
         content_layout = QHBoxLayout()
         main_layout.addLayout(content_layout)
 
-        # ----- Левая часть: сцена -----
         self.scene = QGraphicsScene()
         self.view = QGraphicsView(self.scene)
         content_layout.addWidget(self.view, 2)
 
         self.draw_drill()
-        # Текущее состояние
         self.depth = 0
         self.rotation_angle = 0
-
-        # Таймер анимации
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_animation)
-        # ----- Правая часть: графики -----
+
         graphs_layout = QVBoxLayout()
 
         self.graph1 = pg.PlotWidget(title="Drilling Speed")
