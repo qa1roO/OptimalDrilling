@@ -1,1 +1,1 @@
-print('YO')
+OWO
