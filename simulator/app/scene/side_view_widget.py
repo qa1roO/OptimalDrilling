@@ -11,13 +11,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .rock_layer_generator_stub import generate_rock_layers_stub
-
+from .rock_layer_generator_stub import generate_rock_layers
 
 class SideViewWidget(QWidget):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.layers = generate_rock_layers_stub()
+        self.region, self.layers = generate_rock_layers()
         self.depth_m = 0.0
         self.depth_dir = 1.0
         self._tick = 0.0
@@ -221,6 +220,14 @@ class SideViewWidget(QWidget):
         self.rot_text = pg.TextItem("Rotational pressure: 0 kN*m", anchor=(0, 0), color="#122238")
         self.rot_text.setPos(432, 100)
         self.view.addItem(self.rot_text)
+        self.region_text = pg.TextItem (
+            f"Region: {self.region}",
+            anchor=(0, 0),
+            color="#122238"
+        )
+        self.region_text.setPos(432, 40)
+
+        self.view.addItem(self.region_text)
 
     def _start_timer(self) -> None:
         self.timer = QTimer(self)
