@@ -1,2 +1,3 @@
 /datasets/*.xlsx
-prepare.ipynb
+__pycache__/
+*.pyc
