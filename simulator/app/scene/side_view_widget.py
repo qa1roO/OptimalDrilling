@@ -38,7 +38,7 @@ from .rock_layer_generator_stub import generate_rock_layers
 
 # ---------- Геометрия сцены ----------
 SCENE_W = 900.0
-SCENE_H = 980.0
+SCENE_H = 1220.0
 
 MAST_X = 310.0
 MAST_W = 60.0
@@ -59,9 +59,9 @@ ROTARY_HEAD_H = 16.0
 ROTARY_NECK_W = 20.0
 ROTARY_NECK_H = 14.0
 
-SECTION_LEFT = 60.0
+SECTION_LEFT = 0.0
 SECTION_TOP = TRACK_Y + TRACK_H
-SECTION_RIGHT = 860.0
+SECTION_RIGHT = SCENE_W
 SECTION_BOTTOM = SCENE_H - 20.0
 SECTION_W = SECTION_RIGHT - SECTION_LEFT
 SECTION_H = SECTION_BOTTOM - SECTION_TOP
@@ -72,11 +72,16 @@ BOREHOLE_W = 13.0
 BIT_BODY_H = 8.0
 BIT_CONE_H = 8.0
 BIT_CONE_OFFSET_Y = 9.0
+PIPE_SPIN_MARKS = 14
+PIPE_SPIN_SPACING = 24.0
+ROT_SPEED_BASE_RPM = 92.0
+ROT_SPEED_SWING_RPM = 14.0
 
 # Реалистичный рабочий диапазон одной буровой штанги.
-MIN_DEPTH_M = 22.0
-MAX_DEPTH_M = 27.0
+MIN_DEPTH_M = 20.0
+MAX_DEPTH_M = 40.0
 DEPTH_STEP_M = 0.06
+TIMER_INTERVAL_MS = 40
 
 Z_GEOLOGY = -30.0
 Z_GEOLOGY_LABEL = -25.0
@@ -93,6 +98,9 @@ class SideViewWidget(QWidget):
         super().__init__(parent)
         self._tick = 0.0
         self.depth_m = 0.0
+        self.rot_speed_rpm = ROT_SPEED_BASE_RPM
+        self.spin_angle_rad = 0.0
+        self._pending_geology_reset = False
         self.target_depth_m = random.uniform(MIN_DEPTH_M, MAX_DEPTH_M)
         self.region, self.layers = generate_rock_layers()
         self._geology_items: list = []
@@ -143,7 +151,7 @@ class SideViewWidget(QWidget):
         y = SECTION_TOP
         for layer in self.layers:
             h = (layer.thickness / total) * SECTION_H
-            rect = QGraphicsRectItem(SECTION_LEFT + 2, y, SECTION_W - 4, h)
+            rect = QGraphicsRectItem(SECTION_LEFT, y, SECTION_W, h)
             rect.setBrush(QBrush(QColor(layer.color_hex)))
             rect.setPen(QPen(QColor("#5f6d83"), 1))
             self._add_item(rect, Z_GEOLOGY)
@@ -184,6 +192,19 @@ class SideViewWidget(QWidget):
         self.pipe_shine.setBrush(QBrush(QColor("#dde4f0")))
         self.pipe_shine.setPen(QPen(QColor("#dde4f0"), 0))
         self._add_item(self.pipe_shine, Z_PIPE + 1)
+
+        self.pipe_rot_shadow = QGraphicsRectItem(bx - PIPE_W / 2, MAST_BOT_Y, 1.5, 0)
+        self.pipe_rot_shadow.setBrush(QBrush(QColor(88, 97, 110, 110)))
+        self.pipe_rot_shadow.setPen(QPen(QColor(88, 97, 110, 0), 0))
+        self._add_item(self.pipe_rot_shadow, Z_PIPE + 1)
+
+        self.pipe_spin_marks: list[QGraphicsLineItem] = []
+        spin_pen = QPen(QColor("#eef4fb"), 1.2)
+        for _ in range(PIPE_SPIN_MARKS):
+            mark = QGraphicsLineItem()
+            mark.setPen(spin_pen)
+            self._add_item(mark, Z_PIPE + 2)
+            self.pipe_spin_marks.append(mark)
 
     # ------------------------------------------------------------------ Станок (статика)
 
@@ -234,10 +255,19 @@ class SideViewWidget(QWidget):
         self._add_item(head, Z_RIG + 0.2)
 
         # Шкив
-        pulley = QGraphicsEllipseItem(MAST_X - 8, MAST_TOP_Y - 7, 16, 16)
-        pulley.setBrush(QBrush(QColor("#2a3040")))
-        pulley.setPen(QPen(QColor("#1a1f2e"), 2))
-        self._add_item(pulley, Z_RIG + 0.3)
+        self.pulley = QGraphicsEllipseItem(MAST_X - 8, MAST_TOP_Y - 7, 16, 16)
+        self.pulley.setBrush(QBrush(QColor("#2a3040")))
+        self.pulley.setPen(QPen(QColor("#1a1f2e"), 2))
+        self._add_item(self.pulley, Z_RIG + 0.3)
+
+        self.pulley_spokes: list[QGraphicsLineItem] = []
+        spoke_pen = QPen(QColor("#b9c4d1"), 1.5)
+        for _ in range(4):
+            spoke = QGraphicsLineItem()
+            spoke.setPen(spoke_pen)
+            self._add_item(spoke, Z_RIG + 0.4)
+            self.pulley_spokes.append(spoke)
+        self._update_pulley_rotation()
 
         # Тросы
         pen_c = QPen(QColor("#8899aa"), 1)
@@ -268,68 +298,311 @@ class SideViewWidget(QWidget):
             self._add_item(brace, Z_RIG - 0.1)
 
     def _draw_chassis(self) -> None:
-        body = QGraphicsRectItem(120, CHASSIS_Y, 620, CHASSIS_H)
-        body.setBrush(QBrush(QColor("#d4a800")))
-        body.setPen(QPen(QColor("#8a6c00"), 2))
+        body = QGraphicsRectItem(115, CHASSIS_Y, 625, CHASSIS_H)
+        body.setBrush(QBrush(QColor("#495468")))
+        body.setPen(QPen(QColor("#252e3d"), 2))
         self._add_item(body, Z_RIG)
 
-        for tx in (128, 476):
-            track = QGraphicsRectItem(tx, TRACK_Y, 212, TRACK_H)
-            track.setBrush(QBrush(QColor("#1a1f2a")))
-            track.setPen(QPen(QColor("#0d1017"), 2))
-            self._add_item(track, Z_RIG + 0.1)
-            for i in range(7):
-                w = QGraphicsEllipseItem(tx + 8 + i * 28, TRACK_Y + 5, 20, 20)
-                w.setBrush(QBrush(QColor("#2e3545")))
-                w.setPen(QPen(QColor("#0d1017"), 1))
-                self._add_item(w, Z_RIG + 0.2)
-            for wx in (tx + 3, tx + 188):
-                gw = QGraphicsEllipseItem(wx, TRACK_Y + 1, 26, 26)
-                gw.setBrush(QBrush(QColor("#d4a800")))
-                gw.setPen(QPen(QColor("#8a6c00"), 2))
-                self._add_item(gw, Z_RIG + 0.3)
+        mast_pass = QGraphicsRectItem(130, CHASSIS_Y + 55, 230, 30)
+        mast_pass.setBrush(QBrush(QColor("#262d39")))
+        mast_pass.setPen(QPen(QColor("#161b23"), 2))
+        self._add_item(mast_pass, Z_RIG + 0.15)
+
+        track_x = 388
+        track_w = 218
+        track_y = TRACK_Y - 5
+        sprocket_d = 38
+        idler_d = 24
+        frame_h = 34
+        belt_h = 10
+
+        track_body = QGraphicsRectItem(track_x + 5, track_y + 20, track_w - 28, frame_h - 29)
+        track_body.setBrush(QBrush(QColor("#e0b400")))
+        track_body.setPen(QPen(QColor("#8a6c00"), 2))
+        self._add_item(track_body, Z_RIG + 0.15)
+
+        upper_belt = QGraphicsRectItem(track_x + 8, track_y + 2, track_w - 34, belt_h)
+        upper_belt.setBrush(QBrush(QColor("#222933")))
+        upper_belt.setPen(QPen(QColor("#141920"), 1))
+        self._add_item(upper_belt, Z_RIG + 0.20)
+
+        lower_belt = QGraphicsRectItem(track_x + 12, track_y + 25, track_w - 36, belt_h)
+        lower_belt.setBrush(QBrush(QColor("#222933")))
+        lower_belt.setPen(QPen(QColor("#141920"), 1))
+        self._add_item(lower_belt, Z_RIG + 0.20)
+
+        left_belt = QGraphicsEllipseItem(track_x - 2, track_y + 10, idler_d, idler_d)
+        left_belt.setBrush(QBrush(QColor("#222933")))
+        left_belt.setPen(QPen(QColor("#141920"), 1))
+        self._add_item(left_belt, Z_RIG + 0.20)
+
+        right_belt = QGraphicsEllipseItem(track_x + track_w - sprocket_d, track_y + 1, sprocket_d, sprocket_d)
+        right_belt.setBrush(QBrush(QColor("#222933")))
+        right_belt.setPen(QPen(QColor("#141920"), 1))
+        self._add_item(right_belt, Z_RIG + 0.20)
+
+        left_wheel = QGraphicsEllipseItem(track_x, track_y + 12, idler_d - 4, idler_d - 4)
+        left_wheel.setBrush(QBrush(QColor("#d9ad00")))
+        left_wheel.setPen(QPen(QColor("#846400"), 2))
+        self._add_item(left_wheel, Z_RIG + 0.24)
+
+        for tx in range(track_x + 30, track_x + track_w - 56, 20):
+            roller = QGraphicsEllipseItem(tx, track_y + 20, 10, 10)
+            roller.setBrush(QBrush(QColor("#667387")))
+            roller.setPen(QPen(QColor("#2c3442"), 1))
+            self._add_item(roller, Z_RIG + 0.25)
+
+        carrier = QGraphicsRectItem(track_x + 38, track_y + 13, 122, 4)
+        carrier.setBrush(QBrush(QColor("#586476")))
+        carrier.setPen(QPen(QColor("#313a48"), 1))
+        self._add_item(carrier, Z_RIG + 0.19)
+
+        for tx in range(track_x + 10, track_x + track_w - 28, 18):
+            top_tooth = QGraphicsRectItem(tx, track_y - 2, 12, 3)
+            top_tooth.setBrush(QBrush(QColor("#141920")))
+            top_tooth.setPen(QPen(QColor("#141920"), 1))
+            self._add_item(top_tooth, Z_RIG + 0.23)
+
+        for tx in range(track_x + 32, track_x + track_w - 50, 18):
+            shoe = QGraphicsRectItem(tx, track_y + 30, 12, 4)
+            shoe.setBrush(QBrush(QColor("#37404e")))
+            shoe.setPen(QPen(QColor("#171c24"), 1))
+            self._add_item(shoe, Z_RIG + 0.23)
+
+        sprocket = QGraphicsEllipseItem(track_x + track_w - sprocket_d + 4, track_y + 5, sprocket_d - 8, sprocket_d - 8)
+        sprocket.setBrush(QBrush(QColor("#e0b400")))
+        sprocket.setPen(QPen(QColor("#8a6c00"), 2))
+        self._add_item(sprocket, Z_RIG + 0.26)
+
+        hub = QGraphicsEllipseItem(track_x + track_w - 24, track_y + 15, 10, 10)
+        hub.setBrush(QBrush(QColor("#505b6b")))
+        hub.setPen(QPen(QColor("#283243"), 1))
+        self._add_item(hub, Z_RIG + 0.27)
+
+        leg_top_y = CHASSIS_Y + CHASSIS_H
+        self._draw_stabilizer_leg(340, leg_top_y, SECTION_TOP)
+        self._draw_stabilizer_leg(720, leg_top_y, SECTION_TOP)
+
+    def _draw_stabilizer_leg(self, center_x: float, top_y: float, ground_y: float) -> None:
+        foot_h = 8.0
+        leg_h = max(ground_y - top_y - foot_h, 16.0)
+
+        leg = QGraphicsRectItem(center_x - 7, top_y, 14, leg_h)
+        leg.setBrush(QBrush(QColor("#e0b400")))
+        leg.setPen(QPen(QColor("#8a6c00"), 2))
+        self._add_item(leg, Z_RIG + 0.25)
+
+        foot = QGraphicsPathItem()
+        fp = QPainterPath()
+        foot_y = top_y + leg_h
+        fp.moveTo(center_x - 22, foot_y)
+        fp.lineTo(center_x + 22, foot_y)
+        fp.lineTo(center_x + 14, foot_y + foot_h)
+        fp.lineTo(center_x - 14, foot_y + foot_h)
+        fp.closeSubpath()
+        foot.setPath(fp)
+        foot.setBrush(QBrush(QColor("#75664a")))
+        foot.setPen(QPen(QColor("#4a4030"), 2))
+        self._add_item(foot, Z_RIG + 0.24)
+
+        for dx in (-16, -6, 6, 16):
+            rib = QGraphicsLineItem(center_x, foot_y, center_x + dx, foot_y + foot_h)
+            rib.setPen(QPen(QColor("#4a4030"), 1))
+            self._add_item(rib, Z_RIG + 0.26)
 
     def _draw_cabin(self) -> None:
-        cab_y = MAST_BOT_Y + 6
-        cabin = QGraphicsRectItem(128, cab_y, 130, 42)
-        cabin.setBrush(QBrush(QColor("#d4a800")))
+        cab_y = MAST_BOT_Y - 30
+
+        roof = QGraphicsRectItem(90, cab_y + 0, 150, 12)
+        roof.setBrush(QBrush(QColor("#d9ca8f")))
+        roof.setPen(QPen(QColor("#8a6c00"), 2))
+        self._add_item(roof, Z_RIG + 0.31)
+
+        cabin = QGraphicsPathItem()
+        path = QPainterPath()
+        path.moveTo(114, cab_y + 86)
+        path.lineTo(100, cab_y + 14)
+        path.lineTo(128, cab_y + 14)
+        path.lineTo(236, cab_y + 14)
+        path.lineTo(236, cab_y + 86)
+        path.closeSubpath()
+        cabin.setPath(path)
+        cabin.setBrush(QBrush(QColor("#d8b347")))
         cabin.setPen(QPen(QColor("#8a6c00"), 2))
         self._add_item(cabin, Z_RIG + 0.3)
 
-        win = QGraphicsRectItem(138, cab_y + 5, 68, 26)
-        win.setBrush(QBrush(QColor("#a8d8c8")))
-        win.setPen(QPen(QColor("#4a8a7a"), 1))
-        self._add_item(win, Z_RIG + 0.4)
+        front_win = QGraphicsPathItem()
+        front_path = QPainterPath()
+        front_path.moveTo(124, cab_y + 58)
+        front_path.lineTo(124, cab_y + 28)
+        front_path.lineTo(137, cab_y + 20)
+        front_path.lineTo(157, cab_y + 20)
+        front_path.lineTo(155, cab_y + 58)
+        front_path.closeSubpath()
+        front_win.setPath(front_path)
+        front_win.setBrush(QBrush(QColor("#d9e3e7")))
+        front_win.setPen(QPen(QColor("#51596a"), 2))
+        self._add_item(front_win, Z_RIG + 0.4)
 
-        lbl = pg.TextItem("PV-271", anchor=(0.5, 0), color="#1a1f2a")
-        lbl.setPos(193, cab_y + 50)
+        center_win = QGraphicsRectItem(158, cab_y + 20, 24, 38)
+        center_win.setBrush(QBrush(QColor("#d9e3e7")))
+        center_win.setPen(QPen(QColor("#51596a"), 2))
+        self._add_item(center_win, Z_RIG + 0.4)
+
+        side_win = QGraphicsRectItem(186, cab_y + 20, 40, 38)
+        side_win.setBrush(QBrush(QColor("#d9e3e7")))
+        side_win.setPen(QPen(QColor("#51596a"), 2))
+        self._add_item(side_win, Z_RIG + 0.4)
+
+        lower_panel = QGraphicsRectItem(120, cab_y + 60, 112, 22)
+        lower_panel.setBrush(QBrush(QColor("#d1aa40")))
+        lower_panel.setPen(QPen(QColor("#8a6c00"), 1))
+        self._add_item(lower_panel, Z_RIG + 0.35)
+
+        lbl = pg.TextItem("PV-271", anchor=(0.5, 0), color="#4a1d1f")
+        lbl.setPos(176, cab_y + 56)
         self._add_item(lbl, Z_RIG + 0.5)
 
+        cab_ladder = QGraphicsLineItem(113, cab_y + 70, 113, SECTION_TOP - 6)
+        cab_ladder.setPen(QPen(QColor("#d4b100"), 2))
+        self._add_item(cab_ladder, Z_RIG + 0.34)
+
     def _draw_engine_deck(self) -> None:
-        deck_y = MAST_BOT_Y + 8
-        deck = QGraphicsRectItem(378, deck_y, 362, 40)
-        deck.setBrush(QBrush(QColor("#d4a800")))
-        deck.setPen(QPen(QColor("#8a6c00"), 2))
-        self._add_item(deck, Z_RIG + 0.3)
+        rail_base_y = MAST_BOT_Y + 48
+        rail_color = QColor("#c29300")
+        rail_dark = QColor("#7b5d00")
 
-        eng = QGraphicsRectItem(398, deck_y + 5, 160, 26)
-        eng.setBrush(QBrush(QColor("#b08c00")))
-        eng.setPen(QPen(QColor("#6a5200"), 2))
-        self._add_item(eng, Z_RIG + 0.4)
+        for cx in (340, 720):
+            cap = QGraphicsRectItem(cx - 8, rail_base_y - 12, 16, 12)
+            cap.setBrush(QBrush(QColor("#e0b400")))
+            cap.setPen(QPen(QColor("#8a6c00"), 2))
+            self._add_item(cap, Z_RIG + 0.42)
 
-        flt = QGraphicsEllipseItem(570, deck_y + 3, 30, 30)
-        flt.setBrush(QBrush(QColor("#c09800")))
-        flt.setPen(QPen(QColor("#6a5200"), 2))
-        self._add_item(flt, Z_RIG + 0.5)
+        rail_posts = (232, 340, 500, 610, 720)
+        rail_top_y = rail_base_y - 22
+        rail_mid_y = rail_base_y - 10
+        for px in rail_posts:
+            post = QGraphicsLineItem(px, rail_top_y, px, rail_base_y)
+            post.setPen(QPen(rail_color, 2))
+            self._add_item(post, Z_RIG + 0.43)
 
-        for i in range(4):
-            rung = QGraphicsLineItem(700, deck_y + 3 + i * 9, 720, deck_y + 3 + i * 9)
-            rung.setPen(QPen(QColor("#8a6c00"), 2))
-            self._add_item(rung, Z_RIG + 0.4)
-        for lx in (700, 720):
-            side = QGraphicsLineItem(lx, deck_y + 3, lx, deck_y + 38)
-            side.setPen(QPen(QColor("#8a6c00"), 2))
-            self._add_item(side, Z_RIG + 0.4)
+        top_rail = QGraphicsLineItem(232, rail_top_y, 720, rail_top_y)
+        top_rail.setPen(QPen(rail_color, 2))
+        self._add_item(top_rail, Z_RIG + 0.44)
+
+        mid_rail = QGraphicsLineItem(232, rail_mid_y, 720, rail_mid_y)
+        mid_rail.setPen(QPen(rail_color, 2))
+        self._add_item(mid_rail, Z_RIG + 0.44)
+
+        stair_top_x = 426
+        stair_top_y = rail_base_y - 2
+        stair_bottom_x = 464
+        stair_bottom_y = rail_base_y + 56
+
+        left_stringer = QGraphicsLineItem(stair_top_x, stair_top_y, stair_bottom_x, stair_bottom_y)
+        left_stringer.setPen(QPen(rail_color, 3))
+        self._add_item(left_stringer, Z_RIG + 0.45)
+
+        right_stringer = QGraphicsLineItem(stair_top_x + 14, stair_top_y, stair_bottom_x + 14, stair_bottom_y)
+        right_stringer.setPen(QPen(rail_color, 3))
+        self._add_item(right_stringer, Z_RIG + 0.45)
+
+        for i in range(6):
+            t = (i + 0.6) / 6.6
+            lx = stair_top_x + (stair_bottom_x - stair_top_x) * t
+            ly = stair_top_y + (stair_bottom_y - stair_top_y) * t
+            rx = stair_top_x + 14 + (stair_bottom_x - stair_top_x) * t
+            ry = stair_top_y + (stair_bottom_y - stair_top_y) * t
+            step = QGraphicsLineItem(lx, ly, rx, ry)
+            step.setPen(QPen(QColor("#e7c640"), 2))
+            self._add_item(step, Z_RIG + 0.46)
+
+        stair_post_top = QGraphicsLineItem(stair_top_x + 14, rail_top_y, stair_top_x + 14, stair_top_y)
+        stair_post_top.setPen(QPen(rail_color, 2))
+        self._add_item(stair_post_top, Z_RIG + 0.45)
+
+        deck_y = rail_base_y - 18
+        deck_h = 14
+        deck = QGraphicsRectItem(474, deck_y, 214, deck_h)
+        deck.setBrush(QBrush(QColor("#d1a200")))
+        deck.setPen(QPen(QColor("#896700"), 2))
+        self._add_item(deck, Z_RIG + 0.41)
+
+        module_y = deck_y - 18
+
+        tank = QGraphicsRectItem(500, module_y - 12, 70, 16)
+        tank.setBrush(QBrush(QColor("#d9b100")))
+        tank.setPen(QPen(QColor("#8a6c00"), 2))
+        self._add_item(tank, Z_RIG + 0.46)
+
+        tank_head = QGraphicsEllipseItem(494, module_y - 12, 18, 16)
+        tank_head.setBrush(QBrush(QColor("#d9b100")))
+        tank_head.setPen(QPen(QColor("#8a6c00"), 2))
+        self._add_item(tank_head, Z_RIG + 0.46)
+
+        for tx in (524, 548):
+            band = QGraphicsLineItem(tx, module_y - 12, tx, module_y + 4)
+            band.setPen(QPen(QColor("#8a6c00"), 2))
+            self._add_item(band, Z_RIG + 0.47)
+
+        for px in (516, 548):
+            post = QGraphicsLineItem(px, module_y + 4, px, deck_y + deck_h)
+            post.setPen(QPen(QColor("#8a6c00"), 2))
+            self._add_item(post, Z_RIG + 0.45)
+
+        elbow = QGraphicsPathItem()
+        ep = QPainterPath()
+        ep.moveTo(570, module_y - 4)
+        ep.cubicTo(582, module_y - 4, 584, module_y + 4, 586, module_y + 9)
+        ep.cubicTo(588, module_y + 13, 594, module_y + 13, 597, module_y + 11)
+        elbow.setPath(ep)
+        elbow.setPen(QPen(QColor("#3d434c"), 3))
+        self._add_item(elbow, Z_RIG + 0.47)
+
+        for cx in (520, 542, 564):
+            unit = QGraphicsEllipseItem(cx, deck_y + 4, 18, 18)
+            unit.setBrush(QBrush(QColor("#4e5766")))
+            unit.setPen(QPen(QColor("#2d3440"), 2))
+            self._add_item(unit, Z_RIG + 0.46)
+
+        unit_base = QGraphicsRectItem(512, deck_y + deck_h - 2, 74, 8)
+        unit_base.setBrush(QBrush(QColor("#3a414e")))
+        unit_base.setPen(QPen(QColor("#242a34"), 1))
+        self._add_item(unit_base, Z_RIG + 0.45)
+
+        generator = QGraphicsRectItem(606, deck_y - 14, 48, 24)
+        generator.setBrush(QBrush(QColor("#cf9f00")))
+        generator.setPen(QPen(QColor("#876600"), 2))
+        self._add_item(generator, Z_RIG + 0.46)
+
+        gen_top = QGraphicsRectItem(612, deck_y - 22, 36, 10)
+        gen_top.setBrush(QBrush(QColor("#d8ad14")))
+        gen_top.setPen(QPen(QColor("#876600"), 1))
+        self._add_item(gen_top, Z_RIG + 0.47)
+
+        top_bar = QGraphicsLineItem(602, deck_y - 20, 660, deck_y - 20)
+        top_bar.setPen(QPen(rail_color, 2))
+        self._add_item(top_bar, Z_RIG + 0.46)
+        for px in (606, 620, 634, 648):
+            guard = QGraphicsLineItem(px, deck_y - 20, px, deck_y)
+            guard.setPen(QPen(rail_dark, 1))
+            self._add_item(guard, Z_RIG + 0.46)
+
+        hose_1 = QGraphicsPathItem()
+        hp1 = QPainterPath()
+        hp1.moveTo(584, deck_y + 14)
+        hp1.cubicTo(596, deck_y + 16, 612, deck_y - 4, 626, deck_y - 2)
+        hose_1.setPath(hp1)
+        hose_1.setPen(QPen(QColor("#353b45"), 3))
+        self._add_item(hose_1, Z_RIG + 0.47)
+
+        hose_2 = QGraphicsPathItem()
+        hp2 = QPainterPath()
+        hp2.moveTo(590, deck_y + 20)
+        hp2.cubicTo(604, deck_y + 26, 620, deck_y + 10, 644, deck_y + 8)
+        hose_2.setPath(hp2)
+        hose_2.setPen(QPen(QColor("#353b45"), 3))
+        self._add_item(hose_2, Z_RIG + 0.47)
 
     # ------------------------------------------------------------------ Каретка (поверх мачты)
 
@@ -440,6 +713,36 @@ class SideViewWidget(QWidget):
         self.motor.setPath(body_path)
         self.motor_highlight.setPath(hl_path)
 
+    def _update_pulley_rotation(self) -> None:
+        cx = MAST_X
+        cy = MAST_TOP_Y + 1
+        radius = 6.0
+        angle = self.spin_angle_rad
+        for idx, spoke in enumerate(self.pulley_spokes):
+            a = angle + idx * (math.pi / 2)
+            dx = math.cos(a) * radius
+            dy = math.sin(a) * radius
+            spoke.setLine(cx - dx, cy - dy, cx + dx, cy + dy)
+
+    def _update_pipe_rotation(self, pipe_top: float, pipe_h: float) -> None:
+        for idx, mark in enumerate(self.pipe_spin_marks):
+            mark.setLine(0, 0, 0, 0)
+
+        if pipe_h <= 0:
+            self.pipe_shine.setRect(PIPE_X - PIPE_W / 2, pipe_top, 0, 0)
+            self.pipe_rot_shadow.setRect(PIPE_X - PIPE_W / 2, pipe_top, 0, 0)
+            return
+
+        glow_phase = 0.5 + 0.5 * math.sin(self.spin_angle_rad)
+        glow_w = 1.2
+        glow_x = PIPE_X - PIPE_W / 2 + 0.4 + glow_phase * max(PIPE_W - glow_w - 0.8, 0)
+        shadow_phase = 0.5 + 0.5 * math.sin(self.spin_angle_rad + math.pi)
+        shadow_w = 1.6
+        shadow_x = PIPE_X - PIPE_W / 2 + shadow_phase * max(PIPE_W - shadow_w, 0)
+
+        self.pipe_shine.setRect(glow_x, pipe_top, glow_w, pipe_h)
+        self.pipe_rot_shadow.setRect(shadow_x, pipe_top, shadow_w, pipe_h)
+
     # ------------------------------------------------------------------ Индикатор глубины
 
     def _draw_depth_indicator(self) -> None:
@@ -470,6 +773,7 @@ class SideViewWidget(QWidget):
 
         self.rot_text = pg.TextItem("Rotational pressure: 0 kN·m", anchor=(0, 0), color="#1a2030")
         self.rot_text.setAnchor((1, 0))
+        self.rot_text.setText("Rotation speed: 0 rpm")
         self.rot_text.setPos(info_x, 72)
         self._add_item(self.rot_text, Z_OVERLAY)
 
@@ -477,7 +781,7 @@ class SideViewWidget(QWidget):
 
     def _start_timer(self) -> None:
         self.timer = QTimer(self)
-        self.timer.setInterval(40)
+        self.timer.setInterval(TIMER_INTERVAL_MS)
         self.timer.timeout.connect(self._on_tick)
         self.timer.start()
 
@@ -489,15 +793,16 @@ class SideViewWidget(QWidget):
     def _bit_tip_y(self) -> float:
         return self._bit_y() + BIT_CONE_OFFSET_Y + BIT_CONE_H
 
+    def _target_bottom_y(self) -> float:
+        return SECTION_BOTTOM
+
     def _car_y(self) -> float:
-        t = (self.depth_m / self.target_depth_m)
+        t = min(self.depth_m / MAX_DEPTH_M, 1.0)
         return CARRIAGE_TOP_Y + (CARRIAGE_BOT_Y - CARRIAGE_TOP_Y) * t
 
     def _on_tick(self) -> None:
-        self._tick += 0.06
-        self.depth_m = min(self.depth_m + DEPTH_STEP_M, self.target_depth_m)
-
-        if self._bit_tip_y() >= SECTION_BOTTOM:
+        if self._pending_geology_reset:
+            self._pending_geology_reset = False
             self.depth_m = 0.0
             self.target_depth_m = random.uniform(MIN_DEPTH_M, MAX_DEPTH_M)
             self.region, self.layers = generate_rock_layers()
@@ -507,12 +812,21 @@ class SideViewWidget(QWidget):
             self._reset()
             return
 
+        self._tick += 0.06
+        self.rot_speed_rpm = ROT_SPEED_BASE_RPM + ROT_SPEED_SWING_RPM * math.cos(self._tick * 1.2)
+        self.spin_angle_rad += 2 * math.pi * (self.rot_speed_rpm / 60.0) * (TIMER_INTERVAL_MS / 1000.0)
+        self.depth_m = min(self.depth_m + DEPTH_STEP_M, self.target_depth_m)
+
+        if self._bit_tip_y() >= self._target_bottom_y():
+            self._pending_geology_reset = True
+
         self._sync()
 
         axial = 430 + 34 * math.sin(self._tick)
-        rot = 118 + 14 * math.cos(self._tick * 0.9)
+        rot = self.rot_speed_rpm
         self.axial_text.setText(f"Axial pressure: {axial:0.0f} kN")
         self.rot_text.setText(f"Rotational pressure: {rot:0.0f} kN·m")
+        self.rot_text.setText(f"Rotation speed: {self.rot_speed_rpm:0.0f} rpm")
 
     def _sync(self) -> None:
         """Синхронизирует все подвижные элементы с текущей depth_m."""
@@ -531,12 +845,14 @@ class SideViewWidget(QWidget):
         # shaft растягивается от мотора до section_top (над породой труба видна как вал)
         shaft_h = max(SECTION_TOP - shaft_top, 1)
         self.motor_shaft.setRect(bx - 3, shaft_top, 6, shaft_h)
+        self._update_pulley_rotation()
 
         # 3. Труба в породе: от section_top до bit_y
         pipe_top = SECTION_TOP
         pipe_h = max(bit_y - pipe_top, 0)
         self.drill_pipe.setRect(bx - PIPE_W / 2, pipe_top, PIPE_W, pipe_h)
         self.pipe_shine.setRect(bx - PIPE_W / 2, pipe_top, 1.5, pipe_h)
+        self._update_pipe_rotation(pipe_top, pipe_h)
 
         # 4. Скважина: от section_top до bit_y
         self.drilled_hole.setRect(bx - BOREHOLE_W / 2, SECTION_TOP, BOREHOLE_W, pipe_h)
@@ -557,10 +873,12 @@ class SideViewWidget(QWidget):
         self.carriage.setRect(bx - CARRIAGE_W / 2, CARRIAGE_TOP_Y, CARRIAGE_W, CARRIAGE_H)
         self._set_rotary_geometry(bx, CARRIAGE_TOP_Y + CARRIAGE_H)
         self.motor_shaft.setRect(bx - 3, CARRIAGE_TOP_Y + CARRIAGE_H + ROTARY_HEAD_H + ROTARY_NECK_H, 6, max(SECTION_TOP - (CARRIAGE_TOP_Y + CARRIAGE_H + ROTARY_HEAD_H + ROTARY_NECK_H), 1))
+        self._update_pulley_rotation()
 
         self.drill_pipe.setRect(bx - PIPE_W / 2, SECTION_TOP, PIPE_W, 0)
         self.pipe_shine.setRect(bx - PIPE_W / 2, SECTION_TOP, 1.5, 0)
         self.drilled_hole.setRect(bx - BOREHOLE_W / 2, SECTION_TOP, BOREHOLE_W, 0)
+        self._update_pipe_rotation(SECTION_TOP, 0)
 
         self._place_bit(SECTION_TOP)
 
@@ -570,7 +888,8 @@ class SideViewWidget(QWidget):
 
     def _place_bit(self, bit_y: float) -> None:
         bx = PIPE_X
+        roll = math.sin(self.spin_angle_rad) * 1.2
         self.bit_body.setRect(bx - 7, bit_y, 14, BIT_BODY_H)
-        self.bit_cone_l.setRect(bx - 9, bit_y + 7, 6, BIT_CONE_H)
-        self.bit_cone_m.setRect(bx - 3, bit_y + BIT_CONE_OFFSET_Y, 6, BIT_CONE_H)
-        self.bit_cone_r.setRect(bx + 3, bit_y + 7, 6, BIT_CONE_H)
+        self.bit_cone_l.setRect(bx - 9 - roll, bit_y + 7, 6, BIT_CONE_H)
+        self.bit_cone_m.setRect(bx - 3, bit_y + BIT_CONE_OFFSET_Y + abs(roll) * 0.4, 6, BIT_CONE_H)
+        self.bit_cone_r.setRect(bx + 3 + roll, bit_y + 7, 6, BIT_CONE_H)
