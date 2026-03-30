@@ -460,7 +460,7 @@ class SideViewWidget(QWidget):
         self._add_item(lower_panel, Z_RIG + 0.35)
 
         lbl = pg.TextItem("PV-271", anchor=(0.5, 0), color="#4a1d1f")
-        lbl.setPos(176, cab_y + 56)
+        lbl.setPos(176, cab_y + 52)
         self._add_item(lbl, Z_RIG + 0.5)
 
         cab_ladder = QGraphicsLineItem(113, cab_y + 70, 113, SECTION_TOP - 6)
@@ -788,13 +788,13 @@ class SideViewWidget(QWidget):
     # ------------------------------------------------------------------ Кинематика
 
     def _bit_y(self) -> float:
-        return SECTION_TOP + SECTION_H * (self.depth_m / self.target_depth_m)
+        return SECTION_TOP + SECTION_H * min(self.depth_m / MAX_DEPTH_M, 1.0)
 
     def _bit_tip_y(self) -> float:
         return self._bit_y() + BIT_CONE_OFFSET_Y + BIT_CONE_H
 
     def _target_bottom_y(self) -> float:
-        return SECTION_BOTTOM
+        return SECTION_TOP + SECTION_H * (self.target_depth_m / MAX_DEPTH_M)
 
     def _car_y(self) -> float:
         t = min(self.depth_m / MAX_DEPTH_M, 1.0)
