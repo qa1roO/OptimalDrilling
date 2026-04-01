@@ -77,10 +77,11 @@ PIPE_SPIN_SPACING = 24.0
 ROT_SPEED_BASE_RPM = 92.0
 ROT_SPEED_SWING_RPM = 14.0
 
-# Реалистичный рабочий диапазон одной буровой штанги.
+# Рабочий диапазон моделируемой глубины.
 MIN_DEPTH_M = 20.0
 MAX_DEPTH_M = 40.0
 DEPTH_STEP_M = 0.06
+RETRACT_STEP_M = 0.12
 TIMER_INTERVAL_MS = 40
 
 Z_GEOLOGY = -30.0
@@ -92,16 +93,23 @@ Z_CARRIAGE = 20.0
 Z_BIT = 30.0
 Z_OVERLAY = 40.0
 
+BIT_TIP_OFFSET_Y = BIT_CONE_OFFSET_Y + BIT_CONE_H
+PIPE_END_OFFSET_M = (BIT_TIP_OFFSET_Y / SECTION_H) * MAX_DEPTH_M
+
 
 class SideViewWidget(QWidget):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._tick = 0.0
         self.depth_m = 0.0
+        self.hole_depth_m = 0.0
         self.rot_speed_rpm = ROT_SPEED_BASE_RPM
-        self.spin_angle_rad = 0.0
+        self.pulley_angle_rad = 0.0
+        self.tool_spin_angle_rad = 0.0
         self._pending_geology_reset = False
+        self._is_retracting = False
         self.target_depth_m = random.uniform(MIN_DEPTH_M, MAX_DEPTH_M)
+        self.last_completed_depth_m = 0.0
         self.region, self.layers = generate_rock_layers()
         self._geology_items: list = []
 
@@ -141,7 +149,10 @@ class SideViewWidget(QWidget):
         return item
 
     def _draw_geology(self) -> None:
-        bg = QGraphicsRectItem(SECTION_LEFT, SECTION_TOP, SECTION_W, SECTION_H)
+        geology_bottom = self._depth_to_section_y(self.target_depth_m)
+        geology_h = geology_bottom - SECTION_TOP
+
+        bg = QGraphicsRectItem(SECTION_LEFT, SECTION_TOP, SECTION_W, geology_h)
         bg.setBrush(QBrush(QColor("#d8dde6")))
         bg.setPen(QPen(QColor("#4a586e"), 2))
         self._add_item(bg, Z_GEOLOGY)
@@ -150,7 +161,7 @@ class SideViewWidget(QWidget):
         total = sum(l.thickness for l in self.layers) or 1.0
         y = SECTION_TOP
         for layer in self.layers:
-            h = (layer.thickness / total) * SECTION_H
+            h = (layer.thickness / total) * geology_h
             rect = QGraphicsRectItem(SECTION_LEFT, y, SECTION_W, h)
             rect.setBrush(QBrush(QColor(layer.color_hex)))
             rect.setPen(QPen(QColor("#5f6d83"), 1))
@@ -717,7 +728,7 @@ class SideViewWidget(QWidget):
         cx = MAST_X
         cy = MAST_TOP_Y + 1
         radius = 6.0
-        angle = self.spin_angle_rad
+        angle = self.pulley_angle_rad
         for idx, spoke in enumerate(self.pulley_spokes):
             a = angle + idx * (math.pi / 2)
             dx = math.cos(a) * radius
@@ -733,10 +744,10 @@ class SideViewWidget(QWidget):
             self.pipe_rot_shadow.setRect(PIPE_X - PIPE_W / 2, pipe_top, 0, 0)
             return
 
-        glow_phase = 0.5 + 0.5 * math.sin(self.spin_angle_rad)
+        glow_phase = 0.5 + 0.5 * math.sin(self.tool_spin_angle_rad)
         glow_w = 1.2
         glow_x = PIPE_X - PIPE_W / 2 + 0.4 + glow_phase * max(PIPE_W - glow_w - 0.8, 0)
-        shadow_phase = 0.5 + 0.5 * math.sin(self.spin_angle_rad + math.pi)
+        shadow_phase = 0.5 + 0.5 * math.sin(self.tool_spin_angle_rad + math.pi)
         shadow_w = 1.6
         shadow_x = PIPE_X - PIPE_W / 2 + shadow_phase * max(PIPE_W - shadow_w, 0)
 
@@ -777,6 +788,14 @@ class SideViewWidget(QWidget):
         self.rot_text.setPos(info_x, 72)
         self._add_item(self.rot_text, Z_OVERLAY)
 
+        self.total_depth_text = pg.TextItem("Completed depth: 0.0 m", anchor=(1, 0), color="#1a2030")
+        self.total_depth_text.setPos(info_x, 96)
+        self._add_item(self.total_depth_text, Z_OVERLAY)
+
+        self.target_depth_text = pg.TextItem("Target depth: 0.0 m", anchor=(1, 0), color="#1a2030")
+        self.target_depth_text.setPos(info_x, 120)
+        self._add_item(self.target_depth_text, Z_OVERLAY)
+
     # ------------------------------------------------------------------ Таймер
 
     def _start_timer(self) -> None:
@@ -787,14 +806,19 @@ class SideViewWidget(QWidget):
 
     # ------------------------------------------------------------------ Кинематика
 
+    def _depth_to_section_y(self, depth_m: float) -> float:
+        return SECTION_TOP + SECTION_H * min(depth_m / MAX_DEPTH_M, 1.0)
+
+    def _pipe_end_offset_m(self) -> float:
+        return PIPE_END_OFFSET_M
+
     def _bit_y(self) -> float:
-        return SECTION_TOP + SECTION_H * min(self.depth_m / MAX_DEPTH_M, 1.0)
+        # depth_m интерпретируется как глубина контакта шарошки с породой.
+        # Поэтому верх корпуса долота вычисляется с учетом смещения до кончика.
+        return self._depth_to_section_y(self.depth_m) - BIT_TIP_OFFSET_Y
 
     def _bit_tip_y(self) -> float:
-        return self._bit_y() + BIT_CONE_OFFSET_Y + BIT_CONE_H
-
-    def _target_bottom_y(self) -> float:
-        return SECTION_TOP + SECTION_H * (self.target_depth_m / MAX_DEPTH_M)
+        return self._bit_y() + BIT_TIP_OFFSET_Y
 
     def _car_y(self) -> float:
         t = min(self.depth_m / MAX_DEPTH_M, 1.0)
@@ -804,7 +828,11 @@ class SideViewWidget(QWidget):
         if self._pending_geology_reset:
             self._pending_geology_reset = False
             self.depth_m = 0.0
+            self.hole_depth_m = 0.0
+            self._is_retracting = False
             self.target_depth_m = random.uniform(MIN_DEPTH_M, MAX_DEPTH_M)
+            self.pulley_angle_rad = 0.0
+            self.tool_spin_angle_rad = 0.0
             self.region, self.layers = generate_rock_layers()
             self.region_text.setText(f"Region: {self.region}")
             self._clear_geology()
@@ -814,24 +842,41 @@ class SideViewWidget(QWidget):
 
         self._tick += 0.06
         self.rot_speed_rpm = ROT_SPEED_BASE_RPM + ROT_SPEED_SWING_RPM * math.cos(self._tick * 1.2)
-        self.spin_angle_rad += 2 * math.pi * (self.rot_speed_rpm / 60.0) * (TIMER_INTERVAL_MS / 1000.0)
-        self.depth_m = min(self.depth_m + DEPTH_STEP_M, self.target_depth_m)
+        if not self._is_retracting:
+            delta = 2 * math.pi * (self.rot_speed_rpm / 60.0) * (TIMER_INTERVAL_MS / 1000.0)
+            self.pulley_angle_rad += delta
+            self.tool_spin_angle_rad += delta
+            self.depth_m = min(self.depth_m + DEPTH_STEP_M, self.target_depth_m)
+            pipe_end_depth_m = max(self.depth_m - self._pipe_end_offset_m(), 0.0)
+            self.hole_depth_m = max(self.hole_depth_m, pipe_end_depth_m)
+        else:
+            delta = 2 * math.pi * (self.rot_speed_rpm / 60.0) * (TIMER_INTERVAL_MS / 1000.0)
+            self.pulley_angle_rad -= delta
+            self.depth_m = max(self.depth_m - RETRACT_STEP_M, 0.0)
 
-        if self._bit_tip_y() >= self._target_bottom_y():
+        # Сбрасываем цикл, когда шарошка достигает целевой глубины.
+        if not self._is_retracting and self.depth_m >= self.target_depth_m:
+            self.depth_m = self.target_depth_m
+            self.hole_depth_m = max(self.target_depth_m - self._pipe_end_offset_m(), 0.0)
+            self.last_completed_depth_m = self.depth_m
+            self._is_retracting = True
+        elif self._is_retracting and self.depth_m <= 0.0:
+            self.depth_m = 0.0
             self._pending_geology_reset = True
 
         self._sync()
 
         axial = 430 + 34 * math.sin(self._tick)
-        rot = self.rot_speed_rpm
         self.axial_text.setText(f"Axial pressure: {axial:0.0f} kN")
-        self.rot_text.setText(f"Rotational pressure: {rot:0.0f} kN·m")
         self.rot_text.setText(f"Rotation speed: {self.rot_speed_rpm:0.0f} rpm")
+        self.total_depth_text.setText(f"Completed depth: {self.last_completed_depth_m:0.1f} m")
+        self.target_depth_text.setText(f"Target depth: {self.target_depth_m:0.1f} m")
 
     def _sync(self) -> None:
         """Синхронизирует все подвижные элементы с текущей depth_m."""
         bx = PIPE_X
         bit_y = self._bit_y()
+        hole_tip_y = self._depth_to_section_y(self.hole_depth_m)
         car_y = self._car_y()
 
         # 1. Каретка + мотор (жёстко как один блок)
@@ -854,14 +899,16 @@ class SideViewWidget(QWidget):
         self.pipe_shine.setRect(bx - PIPE_W / 2, pipe_top, 1.5, pipe_h)
         self._update_pipe_rotation(pipe_top, pipe_h)
 
-        # 4. Скважина: от section_top до bit_y
-        self.drilled_hole.setRect(bx - BOREHOLE_W / 2, SECTION_TOP, BOREHOLE_W, pipe_h)
+        # 4. Скважина: сохраняет максимальную уже пробуренную глубину и не
+        # "затягивается" вверх вместе с колонной при обратном ходе.
+        hole_h = max(hole_tip_y - SECTION_TOP, 0)
+        self.drilled_hole.setRect(bx - BOREHOLE_W / 2, SECTION_TOP, BOREHOLE_W, hole_h)
 
         # 5. Долото строго на конце трубы
         self._place_bit(bit_y)
 
         # 6. Глубина
-        indicator_y = bit_y + BIT_BODY_H * 0.5
+        indicator_y = bit_y + BIT_TIP_OFFSET_Y * 0.5
         self.depth_line.setLine(bx + 18, indicator_y, bx + 94, indicator_y)
         self.depth_text.setText(f"{self.depth_m:0.1f} m")
         self.depth_text.setPos(bx + 100, min(indicator_y, SECTION_BOTTOM - 12))
@@ -880,15 +927,15 @@ class SideViewWidget(QWidget):
         self.drilled_hole.setRect(bx - BOREHOLE_W / 2, SECTION_TOP, BOREHOLE_W, 0)
         self._update_pipe_rotation(SECTION_TOP, 0)
 
-        self._place_bit(SECTION_TOP)
+        self._place_bit(self._bit_y())
 
-        self.depth_line.setLine(PIPE_X + 18, SECTION_TOP + BIT_BODY_H / 2, PIPE_X + 94, SECTION_TOP + BIT_BODY_H / 2)
+        self.depth_line.setLine(PIPE_X + 18, SECTION_TOP, PIPE_X + 94, SECTION_TOP)
         self.depth_text.setText("0.0 m")
-        self.depth_text.setPos(PIPE_X + 100, SECTION_TOP + BIT_BODY_H / 2)
+        self.depth_text.setPos(PIPE_X + 100, SECTION_TOP)
 
     def _place_bit(self, bit_y: float) -> None:
         bx = PIPE_X
-        roll = math.sin(self.spin_angle_rad) * 1.2
+        roll = math.sin(self.tool_spin_angle_rad) * 1.2
         self.bit_body.setRect(bx - 7, bit_y, 14, BIT_BODY_H)
         self.bit_cone_l.setRect(bx - 9 - roll, bit_y + 7, 6, BIT_CONE_H)
         self.bit_cone_m.setRect(bx - 3, bit_y + BIT_CONE_OFFSET_Y + abs(roll) * 0.4, 6, BIT_CONE_H)
