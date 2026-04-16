@@ -23,7 +23,7 @@ import math
 import random
 
 import pyqtgraph as pg
-from PySide6.QtCore import QRectF, QTimer, Qt
+from PySide6.QtCore import QRectF, QTimer, Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QFont, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QGraphicsEllipseItem,
@@ -76,11 +76,20 @@ PIPE_SPIN_MARKS = 14
 PIPE_SPIN_SPACING = 24.0
 ROT_SPEED_BASE_RPM = 92.0
 ROT_SPEED_SWING_RPM = 14.0
+ROCK_DRILL_SPEED_MPS = {
+    "TopSoil": 0.030,
+    "Clay": 0.022,
+    "Sandstone": 0.014,
+    "Shale": 0.011,
+    "Limestone": 0.009,
+    "Granite": 0.005,
+    "Basalt": 0.004,
+}
+DRILLING_SPEED_TO_DEPTH_STEP = 3.0
 
 # Рабочий диапазон моделируемой глубины.
 MIN_DEPTH_M = 20.0
 MAX_DEPTH_M = 40.0
-DEPTH_STEP_M = 0.06
 RETRACT_STEP_M = 0.12
 TIMER_INTERVAL_MS = 40
 
@@ -98,9 +107,13 @@ PIPE_END_OFFSET_M = (BIT_TIP_OFFSET_Y / SECTION_H) * MAX_DEPTH_M
 
 
 class SideViewWidget(QWidget):
+    drilling_sample = Signal(float, float, float, int)
+    drilling_cycle_started = Signal()
+
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._tick = 0.0
+        self.elapsed_time_s = 0.0
         self.depth_m = 0.0
         self.hole_depth_m = 0.0
         self.rot_speed_rpm = ROT_SPEED_BASE_RPM
@@ -168,7 +181,7 @@ class SideViewWidget(QWidget):
             self._add_item(rect, Z_GEOLOGY)
             self._geology_items.append(rect)
 
-            lbl = pg.TextItem(layer.name, anchor=(0, 0), color="#1f2933")
+            lbl = pg.TextItem(f"{layer.name} | cluster {layer.cluster_id}", anchor=(0, 0), color="#1f2933")
             lbl.setPos(SECTION_LEFT + 8, y + 3)
             self._add_item(lbl, Z_GEOLOGY_LABEL)
             self._geology_items.append(lbl)
@@ -796,6 +809,10 @@ class SideViewWidget(QWidget):
         self.target_depth_text.setPos(info_x, 120)
         self._add_item(self.target_depth_text, Z_OVERLAY)
 
+        self.layer_speed_text = pg.TextItem("Layer speed: 0.000 m/s", anchor=(1, 0), color="#1a2030")
+        self.layer_speed_text.setPos(info_x, 144)
+        self._add_item(self.layer_speed_text, Z_OVERLAY)
+
     # ------------------------------------------------------------------ Таймер
 
     def _start_timer(self) -> None:
@@ -824,11 +841,36 @@ class SideViewWidget(QWidget):
         t = min(self.depth_m / MAX_DEPTH_M, 1.0)
         return CARRIAGE_TOP_Y + (CARRIAGE_BOT_Y - CARRIAGE_TOP_Y) * t
 
+    def _current_layer(self):
+        total = sum(layer.thickness for layer in self.layers) or 1.0
+        drilled_ratio = min(self.depth_m / max(self.target_depth_m, 1.0), 1.0)
+        cumulative = 0.0
+
+        for layer in self.layers:
+            cumulative += layer.thickness / total
+            if drilled_ratio <= cumulative:
+                return layer
+        return self.layers[-1] if self.layers else None
+
+    def _current_layer_name(self) -> str:
+        layer = self._current_layer()
+        return layer.name if layer is not None else "Sandstone"
+
+    def _current_layer_cluster_id(self) -> int:
+        layer = self._current_layer()
+        return layer.cluster_id if layer is not None else 0
+
+    def _current_drilling_speed(self) -> float:
+        base_speed = ROCK_DRILL_SPEED_MPS.get(self._current_layer_name(), 0.012)
+        tool_variation = 1.0 + 0.08 * math.sin(self._tick * 0.75)
+        return max(base_speed * tool_variation, 0.001)
+
     def _on_tick(self) -> None:
         if self._pending_geology_reset:
             self._pending_geology_reset = False
             self.depth_m = 0.0
             self.hole_depth_m = 0.0
+            self.elapsed_time_s = 0.0
             self._is_retracting = False
             self.target_depth_m = random.uniform(MIN_DEPTH_M, MAX_DEPTH_M)
             self.pulley_angle_rad = 0.0
@@ -838,17 +880,27 @@ class SideViewWidget(QWidget):
             self._clear_geology()
             self._draw_geology()
             self._reset()
+            self.drilling_cycle_started.emit()
             return
 
         self._tick += 0.06
+        self.elapsed_time_s += TIMER_INTERVAL_MS / 1000.0
         self.rot_speed_rpm = ROT_SPEED_BASE_RPM + ROT_SPEED_SWING_RPM * math.cos(self._tick * 1.2)
         if not self._is_retracting:
+            current_speed = self._current_drilling_speed()
+            depth_step = current_speed * DRILLING_SPEED_TO_DEPTH_STEP
             delta = 2 * math.pi * (self.rot_speed_rpm / 60.0) * (TIMER_INTERVAL_MS / 1000.0)
             self.pulley_angle_rad += delta
             self.tool_spin_angle_rad += delta
-            self.depth_m = min(self.depth_m + DEPTH_STEP_M, self.target_depth_m)
+            self.depth_m = min(self.depth_m + depth_step, self.target_depth_m)
             pipe_end_depth_m = max(self.depth_m - self._pipe_end_offset_m(), 0.0)
             self.hole_depth_m = max(self.hole_depth_m, pipe_end_depth_m)
+            self.drilling_sample.emit(
+                self.elapsed_time_s,
+                self.rot_speed_rpm,
+                current_speed,
+                self._current_layer_cluster_id(),
+            )
         else:
             delta = 2 * math.pi * (self.rot_speed_rpm / 60.0) * (TIMER_INTERVAL_MS / 1000.0)
             self.pulley_angle_rad -= delta
@@ -871,6 +923,10 @@ class SideViewWidget(QWidget):
         self.rot_text.setText(f"Rotation speed: {self.rot_speed_rpm:0.0f} rpm")
         self.total_depth_text.setText(f"Completed depth: {self.last_completed_depth_m:0.1f} m")
         self.target_depth_text.setText(f"Target depth: {self.target_depth_m:0.1f} m")
+        self.layer_speed_text.setText(
+            f"Layer: {self._current_layer_name()} | cluster: {self._current_layer_cluster_id()} | "
+            f"speed: {self._current_drilling_speed():0.3f} m/s"
+        )
 
     def _sync(self) -> None:
         """Синхронизирует все подвижные элементы с текущей depth_m."""

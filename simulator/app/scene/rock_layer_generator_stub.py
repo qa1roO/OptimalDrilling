@@ -7,6 +7,7 @@ class RockLayer:
     name: str
     thickness: float
     color_hex: str
+    cluster_id: int
 
 
 ROCK_COLORS = {
@@ -26,6 +27,8 @@ REGIONS = {
     "Brazil Shield": ["TopSoil", "Sandstone", "Shale", "Granite"],
 }
 
+CLUSTER_IDS = tuple(range(7))
+
 
 def generate_rock_layers():
 
@@ -43,6 +46,7 @@ def generate_rock_layers():
                 name=rock,
                 thickness=thickness,
                 color_hex=ROCK_COLORS[rock],
+                cluster_id=random.choice(CLUSTER_IDS),
             )
         )
 
