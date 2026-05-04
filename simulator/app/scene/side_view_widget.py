@@ -140,7 +140,7 @@ class SideViewWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         canvas = pg.GraphicsLayoutWidget()
-        canvas.setBackground("#e8ecf2")
+        canvas.setBackground("#0c121a")
         layout.addWidget(canvas)
 
         self.view = canvas.addViewBox(row=0, col=0, enableMouse=False)
@@ -176,8 +176,8 @@ class SideViewWidget(QWidget):
         geology_h = geology_bottom - SECTION_TOP
 
         bg = QGraphicsRectItem(SECTION_LEFT, SECTION_TOP, SECTION_W, geology_h)
-        bg.setBrush(QBrush(QColor("#d8dde6")))
-        bg.setPen(QPen(QColor("#4a586e"), 2))
+        bg.setBrush(QBrush(QColor("#202b36")))
+        bg.setPen(QPen(QColor("#435265"), 2))
         self._add_item(bg, Z_GEOLOGY)
         self._geology_items.append(bg)
 
@@ -187,12 +187,12 @@ class SideViewWidget(QWidget):
             h = (layer.thickness / total) * geology_h
             rect = QGraphicsRectItem(SECTION_LEFT, y, SECTION_W, h)
             rect.setBrush(QBrush(QColor(layer.color_hex)))
-            rect.setPen(QPen(QColor("#5f6d83"), 1))
+            rect.setPen(QPen(QColor("#253241"), 1))
             self._add_item(rect, Z_GEOLOGY)
             self._geology_items.append(rect)
 
-            lbl = pg.TextItem(f"{layer.name} | cluster {layer.cluster_id}", anchor=(0, 0), color="#1f2933")
-            lbl.setPos(SECTION_LEFT + 8, y + 3)
+            lbl = pg.TextItem(f"{layer.name} | cluster {layer.cluster_id}", anchor=(0, 0.5), color="#dce6f1")
+            lbl.setPos(SECTION_LEFT + 8, y + h / 2)
             self._add_item(lbl, Z_GEOLOGY_LABEL)
             self._geology_items.append(lbl)
             y += h
@@ -803,29 +803,29 @@ class SideViewWidget(QWidget):
 
     def _draw_labels(self) -> None:
         info_x = SCENE_W - 18
-        self.region_text = pg.TextItem(f"Region: {self.region}", anchor=(1, 0), color="#1a2030")
+        self.region_text = pg.TextItem(f"Region: {self.region}", anchor=(1, 0), color="#dce6f1")
         self.region_text.setPos(info_x, 24)
         self._add_item(self.region_text, Z_OVERLAY)
 
-        self.axial_text = pg.TextItem("Axial pressure: 0 kN", anchor=(1, 0), color="#1a2030")
+        self.axial_text = pg.TextItem("Axial pressure: 0 kN", anchor=(1, 0), color="#c5d2e0")
         self.axial_text.setPos(info_x, 48)
         self._add_item(self.axial_text, Z_OVERLAY)
 
-        self.rot_text = pg.TextItem("Rotational pressure: 0 kN·m", anchor=(0, 0), color="#1a2030")
+        self.rot_text = pg.TextItem("Rotational pressure: 0 kN·m", anchor=(0, 0), color="#c5d2e0")
         self.rot_text.setAnchor((1, 0))
         self.rot_text.setText("Rotation speed: 0 rpm")
         self.rot_text.setPos(info_x, 72)
         self._add_item(self.rot_text, Z_OVERLAY)
 
-        self.total_depth_text = pg.TextItem("Completed depth: 0.0 m", anchor=(1, 0), color="#1a2030")
+        self.total_depth_text = pg.TextItem("Completed depth: 0.0 m", anchor=(1, 0), color="#c5d2e0")
         self.total_depth_text.setPos(info_x, 96)
         self._add_item(self.total_depth_text, Z_OVERLAY)
 
-        self.target_depth_text = pg.TextItem("Target depth: 0.0 m", anchor=(1, 0), color="#1a2030")
+        self.target_depth_text = pg.TextItem("Target depth: 0.0 m", anchor=(1, 0), color="#c5d2e0")
         self.target_depth_text.setPos(info_x, 120)
         self._add_item(self.target_depth_text, Z_OVERLAY)
 
-        self.layer_speed_text = pg.TextItem("Layer speed: 0.000 m/s", anchor=(1, 0), color="#1a2030")
+        self.layer_speed_text = pg.TextItem("Layer speed: 0.000 m/s", anchor=(1, 0), color="#c5d2e0")
         self.layer_speed_text.setPos(info_x, 144)
         self._add_item(self.layer_speed_text, Z_OVERLAY)
 
