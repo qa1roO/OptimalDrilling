@@ -47,6 +47,9 @@ MAST_BOT_Y = 540.0
 
 CHASSIS_Y = MAST_BOT_Y + 46.0
 CHASSIS_H = 56.0
+CHASSIS_ORIGINAL_X = 115.0
+CHASSIS_ORIGINAL_W = 625.0
+CHASSIS_BASE_SCALE = 0.70
 TRACK_Y = CHASSIS_Y + CHASSIS_H
 TRACK_H = 30.0
 
@@ -160,6 +163,13 @@ class SideViewWidget(QWidget):
         item.setZValue(z)
         self.view.addItem(item)
         return item
+
+    def _chassis_x(self, x: float) -> float:
+        center = CHASSIS_ORIGINAL_X + CHASSIS_ORIGINAL_W / 2
+        return center + (x - center) * CHASSIS_BASE_SCALE
+
+    def _chassis_w(self, width: float) -> float:
+        return width * CHASSIS_BASE_SCALE
 
     def _draw_geology(self) -> None:
         geology_bottom = self._depth_to_section_y(self.target_depth_m)
@@ -322,18 +332,20 @@ class SideViewWidget(QWidget):
             self._add_item(brace, Z_RIG - 0.1)
 
     def _draw_chassis(self) -> None:
-        body = QGraphicsRectItem(115, CHASSIS_Y, 625, CHASSIS_H)
+        body_x = self._chassis_x(CHASSIS_ORIGINAL_X)
+        body_w = self._chassis_w(CHASSIS_ORIGINAL_W)
+        body = QGraphicsRectItem(body_x, CHASSIS_Y, body_w, CHASSIS_H)
         body.setBrush(QBrush(QColor("#495468")))
         body.setPen(QPen(QColor("#252e3d"), 2))
         self._add_item(body, Z_RIG)
 
-        mast_pass = QGraphicsRectItem(130, CHASSIS_Y + 55, 230, 30)
+        mast_pass = QGraphicsRectItem(MAST_X - 86, CHASSIS_Y + 55, 172, 30)
         mast_pass.setBrush(QBrush(QColor("#262d39")))
         mast_pass.setPen(QPen(QColor("#161b23"), 2))
         self._add_item(mast_pass, Z_RIG + 0.15)
 
-        track_x = 388
-        track_w = 218
+        track_w = 218 * CHASSIS_BASE_SCALE
+        track_x = 388 + (218 - track_w) / 2
         track_y = TRACK_Y - 5
         sprocket_d = 38
         idler_d = 24
@@ -370,24 +382,24 @@ class SideViewWidget(QWidget):
         left_wheel.setPen(QPen(QColor("#846400"), 2))
         self._add_item(left_wheel, Z_RIG + 0.24)
 
-        for tx in range(track_x + 30, track_x + track_w - 56, 20):
+        for tx in range(int(track_x + 24), int(track_x + track_w - 46), 20):
             roller = QGraphicsEllipseItem(tx, track_y + 20, 10, 10)
             roller.setBrush(QBrush(QColor("#667387")))
             roller.setPen(QPen(QColor("#2c3442"), 1))
             self._add_item(roller, Z_RIG + 0.25)
 
-        carrier = QGraphicsRectItem(track_x + 38, track_y + 13, 122, 4)
+        carrier = QGraphicsRectItem(track_x + 28, track_y + 13, max(track_w - 68, 40), 4)
         carrier.setBrush(QBrush(QColor("#586476")))
         carrier.setPen(QPen(QColor("#313a48"), 1))
         self._add_item(carrier, Z_RIG + 0.19)
 
-        for tx in range(track_x + 10, track_x + track_w - 28, 18):
+        for tx in range(int(track_x + 10), int(track_x + track_w - 28), 18):
             top_tooth = QGraphicsRectItem(tx, track_y - 2, 12, 3)
             top_tooth.setBrush(QBrush(QColor("#141920")))
             top_tooth.setPen(QPen(QColor("#141920"), 1))
             self._add_item(top_tooth, Z_RIG + 0.23)
 
-        for tx in range(track_x + 32, track_x + track_w - 50, 18):
+        for tx in range(int(track_x + 26), int(track_x + track_w - 40), 18):
             shoe = QGraphicsRectItem(tx, track_y + 30, 12, 4)
             shoe.setBrush(QBrush(QColor("#37404e")))
             shoe.setPen(QPen(QColor("#171c24"), 1))
@@ -404,8 +416,8 @@ class SideViewWidget(QWidget):
         self._add_item(hub, Z_RIG + 0.27)
 
         leg_top_y = CHASSIS_Y + CHASSIS_H
-        self._draw_stabilizer_leg(340, leg_top_y, SECTION_TOP)
-        self._draw_stabilizer_leg(720, leg_top_y, SECTION_TOP)
+        self._draw_stabilizer_leg(body_x + 128, leg_top_y, SECTION_TOP)
+        self._draw_stabilizer_leg(body_x + body_w - 20, leg_top_y, SECTION_TOP)
 
     def _draw_stabilizer_leg(self, center_x: float, top_y: float, ground_y: float) -> None:
         foot_h = 8.0
@@ -436,19 +448,21 @@ class SideViewWidget(QWidget):
 
     def _draw_cabin(self) -> None:
         cab_y = MAST_BOT_Y - 30
+        sx = self._chassis_x
+        sw = self._chassis_w
 
-        roof = QGraphicsRectItem(90, cab_y + 0, 150, 12)
+        roof = QGraphicsRectItem(sx(90), cab_y + 0, sw(150), 12)
         roof.setBrush(QBrush(QColor("#d9ca8f")))
         roof.setPen(QPen(QColor("#8a6c00"), 2))
         self._add_item(roof, Z_RIG + 0.31)
 
         cabin = QGraphicsPathItem()
         path = QPainterPath()
-        path.moveTo(114, cab_y + 86)
-        path.lineTo(100, cab_y + 14)
-        path.lineTo(128, cab_y + 14)
-        path.lineTo(236, cab_y + 14)
-        path.lineTo(236, cab_y + 86)
+        path.moveTo(sx(114), cab_y + 86)
+        path.lineTo(sx(100), cab_y + 14)
+        path.lineTo(sx(128), cab_y + 14)
+        path.lineTo(sx(236), cab_y + 14)
+        path.lineTo(sx(236), cab_y + 86)
         path.closeSubpath()
         cabin.setPath(path)
         cabin.setBrush(QBrush(QColor("#d8b347")))
@@ -457,37 +471,37 @@ class SideViewWidget(QWidget):
 
         front_win = QGraphicsPathItem()
         front_path = QPainterPath()
-        front_path.moveTo(124, cab_y + 58)
-        front_path.lineTo(124, cab_y + 28)
-        front_path.lineTo(137, cab_y + 20)
-        front_path.lineTo(157, cab_y + 20)
-        front_path.lineTo(155, cab_y + 58)
+        front_path.moveTo(sx(124), cab_y + 58)
+        front_path.lineTo(sx(124), cab_y + 28)
+        front_path.lineTo(sx(137), cab_y + 20)
+        front_path.lineTo(sx(157), cab_y + 20)
+        front_path.lineTo(sx(155), cab_y + 58)
         front_path.closeSubpath()
         front_win.setPath(front_path)
         front_win.setBrush(QBrush(QColor("#d9e3e7")))
         front_win.setPen(QPen(QColor("#51596a"), 2))
         self._add_item(front_win, Z_RIG + 0.4)
 
-        center_win = QGraphicsRectItem(158, cab_y + 20, 24, 38)
+        center_win = QGraphicsRectItem(sx(158), cab_y + 20, sw(24), 38)
         center_win.setBrush(QBrush(QColor("#d9e3e7")))
         center_win.setPen(QPen(QColor("#51596a"), 2))
         self._add_item(center_win, Z_RIG + 0.4)
 
-        side_win = QGraphicsRectItem(186, cab_y + 20, 40, 38)
+        side_win = QGraphicsRectItem(sx(186), cab_y + 20, sw(40), 38)
         side_win.setBrush(QBrush(QColor("#d9e3e7")))
         side_win.setPen(QPen(QColor("#51596a"), 2))
         self._add_item(side_win, Z_RIG + 0.4)
 
-        lower_panel = QGraphicsRectItem(120, cab_y + 60, 112, 22)
+        lower_panel = QGraphicsRectItem(sx(120), cab_y + 60, sw(112), 22)
         lower_panel.setBrush(QBrush(QColor("#d1aa40")))
         lower_panel.setPen(QPen(QColor("#8a6c00"), 1))
         self._add_item(lower_panel, Z_RIG + 0.35)
 
         lbl = pg.TextItem("PV-271", anchor=(0.5, 0), color="#4a1d1f")
-        lbl.setPos(176, cab_y + 52)
+        lbl.setPos(sx(176), cab_y + 52)
         self._add_item(lbl, Z_RIG + 0.5)
 
-        cab_ladder = QGraphicsLineItem(113, cab_y + 70, 113, SECTION_TOP - 6)
+        cab_ladder = QGraphicsLineItem(sx(113), cab_y + 70, sx(113), SECTION_TOP - 6)
         cab_ladder.setPen(QPen(QColor("#d4b100"), 2))
         self._add_item(cab_ladder, Z_RIG + 0.34)
 
@@ -495,9 +509,11 @@ class SideViewWidget(QWidget):
         rail_base_y = MAST_BOT_Y + 48
         rail_color = QColor("#c29300")
         rail_dark = QColor("#7b5d00")
+        sx = self._chassis_x
+        sw = self._chassis_w
 
         for cx in (340, 720):
-            cap = QGraphicsRectItem(cx - 8, rail_base_y - 12, 16, 12)
+            cap = QGraphicsRectItem(sx(cx - 8), rail_base_y - 12, sw(16), 12)
             cap.setBrush(QBrush(QColor("#e0b400")))
             cap.setPen(QPen(QColor("#8a6c00"), 2))
             self._add_item(cap, Z_RIG + 0.42)
@@ -506,15 +522,15 @@ class SideViewWidget(QWidget):
         rail_top_y = rail_base_y - 22
         rail_mid_y = rail_base_y - 10
         for px in rail_posts:
-            post = QGraphicsLineItem(px, rail_top_y, px, rail_base_y)
+            post = QGraphicsLineItem(sx(px), rail_top_y, sx(px), rail_base_y)
             post.setPen(QPen(rail_color, 2))
             self._add_item(post, Z_RIG + 0.43)
 
-        top_rail = QGraphicsLineItem(232, rail_top_y, 720, rail_top_y)
+        top_rail = QGraphicsLineItem(sx(232), rail_top_y, sx(720), rail_top_y)
         top_rail.setPen(QPen(rail_color, 2))
         self._add_item(top_rail, Z_RIG + 0.44)
 
-        mid_rail = QGraphicsLineItem(232, rail_mid_y, 720, rail_mid_y)
+        mid_rail = QGraphicsLineItem(sx(232), rail_mid_y, sx(720), rail_mid_y)
         mid_rail.setPen(QPen(rail_color, 2))
         self._add_item(mid_rail, Z_RIG + 0.44)
 
@@ -523,11 +539,11 @@ class SideViewWidget(QWidget):
         stair_bottom_x = 464
         stair_bottom_y = rail_base_y + 56
 
-        left_stringer = QGraphicsLineItem(stair_top_x, stair_top_y, stair_bottom_x, stair_bottom_y)
+        left_stringer = QGraphicsLineItem(sx(stair_top_x), stair_top_y, sx(stair_bottom_x), stair_bottom_y)
         left_stringer.setPen(QPen(rail_color, 3))
         self._add_item(left_stringer, Z_RIG + 0.45)
 
-        right_stringer = QGraphicsLineItem(stair_top_x + 14, stair_top_y, stair_bottom_x + 14, stair_bottom_y)
+        right_stringer = QGraphicsLineItem(sx(stair_top_x + 14), stair_top_y, sx(stair_bottom_x + 14), stair_bottom_y)
         right_stringer.setPen(QPen(rail_color, 3))
         self._add_item(right_stringer, Z_RIG + 0.45)
 
@@ -537,93 +553,93 @@ class SideViewWidget(QWidget):
             ly = stair_top_y + (stair_bottom_y - stair_top_y) * t
             rx = stair_top_x + 14 + (stair_bottom_x - stair_top_x) * t
             ry = stair_top_y + (stair_bottom_y - stair_top_y) * t
-            step = QGraphicsLineItem(lx, ly, rx, ry)
+            step = QGraphicsLineItem(sx(lx), ly, sx(rx), ry)
             step.setPen(QPen(QColor("#e7c640"), 2))
             self._add_item(step, Z_RIG + 0.46)
 
-        stair_post_top = QGraphicsLineItem(stair_top_x + 14, rail_top_y, stair_top_x + 14, stair_top_y)
+        stair_post_top = QGraphicsLineItem(sx(stair_top_x + 14), rail_top_y, sx(stair_top_x + 14), stair_top_y)
         stair_post_top.setPen(QPen(rail_color, 2))
         self._add_item(stair_post_top, Z_RIG + 0.45)
 
         deck_y = rail_base_y - 18
         deck_h = 14
-        deck = QGraphicsRectItem(474, deck_y, 214, deck_h)
+        deck = QGraphicsRectItem(sx(474), deck_y, sw(214), deck_h)
         deck.setBrush(QBrush(QColor("#d1a200")))
         deck.setPen(QPen(QColor("#896700"), 2))
         self._add_item(deck, Z_RIG + 0.41)
 
         module_y = deck_y - 18
 
-        tank = QGraphicsRectItem(500, module_y - 12, 70, 16)
+        tank = QGraphicsRectItem(sx(500), module_y - 12, sw(70), 16)
         tank.setBrush(QBrush(QColor("#d9b100")))
         tank.setPen(QPen(QColor("#8a6c00"), 2))
         self._add_item(tank, Z_RIG + 0.46)
 
-        tank_head = QGraphicsEllipseItem(494, module_y - 12, 18, 16)
+        tank_head = QGraphicsEllipseItem(sx(494), module_y - 12, sw(18), 16)
         tank_head.setBrush(QBrush(QColor("#d9b100")))
         tank_head.setPen(QPen(QColor("#8a6c00"), 2))
         self._add_item(tank_head, Z_RIG + 0.46)
 
         for tx in (524, 548):
-            band = QGraphicsLineItem(tx, module_y - 12, tx, module_y + 4)
+            band = QGraphicsLineItem(sx(tx), module_y - 12, sx(tx), module_y + 4)
             band.setPen(QPen(QColor("#8a6c00"), 2))
             self._add_item(band, Z_RIG + 0.47)
 
         for px in (516, 548):
-            post = QGraphicsLineItem(px, module_y + 4, px, deck_y + deck_h)
+            post = QGraphicsLineItem(sx(px), module_y + 4, sx(px), deck_y + deck_h)
             post.setPen(QPen(QColor("#8a6c00"), 2))
             self._add_item(post, Z_RIG + 0.45)
 
         elbow = QGraphicsPathItem()
         ep = QPainterPath()
-        ep.moveTo(570, module_y - 4)
-        ep.cubicTo(582, module_y - 4, 584, module_y + 4, 586, module_y + 9)
-        ep.cubicTo(588, module_y + 13, 594, module_y + 13, 597, module_y + 11)
+        ep.moveTo(sx(570), module_y - 4)
+        ep.cubicTo(sx(582), module_y - 4, sx(584), module_y + 4, sx(586), module_y + 9)
+        ep.cubicTo(sx(588), module_y + 13, sx(594), module_y + 13, sx(597), module_y + 11)
         elbow.setPath(ep)
         elbow.setPen(QPen(QColor("#3d434c"), 3))
         self._add_item(elbow, Z_RIG + 0.47)
 
         for cx in (520, 542, 564):
-            unit = QGraphicsEllipseItem(cx, deck_y + 4, 18, 18)
+            unit = QGraphicsEllipseItem(sx(cx), deck_y + 4, sw(18), 18)
             unit.setBrush(QBrush(QColor("#4e5766")))
             unit.setPen(QPen(QColor("#2d3440"), 2))
             self._add_item(unit, Z_RIG + 0.46)
 
-        unit_base = QGraphicsRectItem(512, deck_y + deck_h - 2, 74, 8)
+        unit_base = QGraphicsRectItem(sx(512), deck_y + deck_h - 2, sw(74), 8)
         unit_base.setBrush(QBrush(QColor("#3a414e")))
         unit_base.setPen(QPen(QColor("#242a34"), 1))
         self._add_item(unit_base, Z_RIG + 0.45)
 
-        generator = QGraphicsRectItem(606, deck_y - 14, 48, 24)
+        generator = QGraphicsRectItem(sx(606), deck_y - 14, sw(48), 24)
         generator.setBrush(QBrush(QColor("#cf9f00")))
         generator.setPen(QPen(QColor("#876600"), 2))
         self._add_item(generator, Z_RIG + 0.46)
 
-        gen_top = QGraphicsRectItem(612, deck_y - 22, 36, 10)
+        gen_top = QGraphicsRectItem(sx(612), deck_y - 22, sw(36), 10)
         gen_top.setBrush(QBrush(QColor("#d8ad14")))
         gen_top.setPen(QPen(QColor("#876600"), 1))
         self._add_item(gen_top, Z_RIG + 0.47)
 
-        top_bar = QGraphicsLineItem(602, deck_y - 20, 660, deck_y - 20)
+        top_bar = QGraphicsLineItem(sx(602), deck_y - 20, sx(660), deck_y - 20)
         top_bar.setPen(QPen(rail_color, 2))
         self._add_item(top_bar, Z_RIG + 0.46)
         for px in (606, 620, 634, 648):
-            guard = QGraphicsLineItem(px, deck_y - 20, px, deck_y)
+            guard = QGraphicsLineItem(sx(px), deck_y - 20, sx(px), deck_y)
             guard.setPen(QPen(rail_dark, 1))
             self._add_item(guard, Z_RIG + 0.46)
 
         hose_1 = QGraphicsPathItem()
         hp1 = QPainterPath()
-        hp1.moveTo(584, deck_y + 14)
-        hp1.cubicTo(596, deck_y + 16, 612, deck_y - 4, 626, deck_y - 2)
+        hp1.moveTo(sx(584), deck_y + 14)
+        hp1.cubicTo(sx(596), deck_y + 16, sx(612), deck_y - 4, sx(626), deck_y - 2)
         hose_1.setPath(hp1)
         hose_1.setPen(QPen(QColor("#353b45"), 3))
         self._add_item(hose_1, Z_RIG + 0.47)
 
         hose_2 = QGraphicsPathItem()
         hp2 = QPainterPath()
-        hp2.moveTo(590, deck_y + 20)
-        hp2.cubicTo(604, deck_y + 26, 620, deck_y + 10, 644, deck_y + 8)
+        hp2.moveTo(sx(590), deck_y + 20)
+        hp2.cubicTo(sx(604), deck_y + 26, sx(620), deck_y + 10, sx(644), deck_y + 8)
         hose_2.setPath(hp2)
         hose_2.setPen(QPen(QColor("#353b45"), 3))
         self._add_item(hose_2, Z_RIG + 0.47)
