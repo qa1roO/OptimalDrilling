@@ -110,7 +110,7 @@ PIPE_END_OFFSET_M = (BIT_TIP_OFFSET_Y / SECTION_H) * MAX_DEPTH_M
 
 
 class SideViewWidget(QWidget):
-    drilling_sample = Signal(float, float, float, int)
+    drilling_sample = Signal(float, float, float, float, int)
     drilling_cycle_started = Signal()
 
     def __init__(self, parent=None) -> None:
@@ -120,6 +120,8 @@ class SideViewWidget(QWidget):
         self.depth_m = 0.0
         self.hole_depth_m = 0.0
         self.rot_speed_rpm = ROT_SPEED_BASE_RPM
+        self.axial_pressure_kn = 0.0
+        self.current_drilling_speed_mps = 0.0
         self.pulley_angle_rad = 0.0
         self.tool_spin_angle_rad = 0.0
         self._pending_geology_reset = False
@@ -829,6 +831,18 @@ class SideViewWidget(QWidget):
         self.layer_speed_text.setPos(info_x, 144)
         self._add_item(self.layer_speed_text, Z_OVERLAY)
 
+        self.carriage_rot_label = pg.TextItem("rotation: 0 rpm", anchor=(0, 0.5), color="#8cc8ff")
+        self.carriage_rot_label.setFont(QFont("Segoe UI", 8))
+        self._add_item(self.carriage_rot_label, Z_OVERLAY)
+
+        self.carriage_axial_label = pg.TextItem("axial: 0 kN", anchor=(0, 0.5), color="#f3d46b")
+        self.carriage_axial_label.setFont(QFont("Segoe UI", 8))
+        self._add_item(self.carriage_axial_label, Z_OVERLAY)
+
+        self.bit_speed_label = pg.TextItem("speed: 0.000 m/s", anchor=(0, 0.5), color="#7ce1a2")
+        self.bit_speed_label.setFont(QFont("Segoe UI", 8))
+        self._add_item(self.bit_speed_label, Z_OVERLAY)
+
     # ------------------------------------------------------------------ Таймер
 
     def _start_timer(self) -> None:
@@ -902,6 +916,7 @@ class SideViewWidget(QWidget):
         self._tick += 0.06
         self.elapsed_time_s += TIMER_INTERVAL_MS / 1000.0
         self.rot_speed_rpm = ROT_SPEED_BASE_RPM + ROT_SPEED_SWING_RPM * math.cos(self._tick * 1.2)
+        current_speed = 0.0
         if not self._is_retracting:
             current_speed = self._current_drilling_speed()
             depth_step = current_speed * DRILLING_SPEED_TO_DEPTH_STEP
@@ -915,6 +930,7 @@ class SideViewWidget(QWidget):
                 self.elapsed_time_s,
                 self.rot_speed_rpm,
                 current_speed,
+                self.depth_m,
                 self._current_layer_cluster_id(),
             )
         else:
@@ -932,16 +948,17 @@ class SideViewWidget(QWidget):
             self.depth_m = 0.0
             self._pending_geology_reset = True
 
+        self.axial_pressure_kn = 430 + 34 * math.sin(self._tick)
+        self.current_drilling_speed_mps = current_speed
         self._sync()
 
-        axial = 430 + 34 * math.sin(self._tick)
-        self.axial_text.setText(f"Axial pressure: {axial:0.0f} kN")
+        self.axial_text.setText(f"Axial pressure: {self.axial_pressure_kn:0.0f} kN")
         self.rot_text.setText(f"Rotation speed: {self.rot_speed_rpm:0.0f} rpm")
         self.total_depth_text.setText(f"Completed depth: {self.last_completed_depth_m:0.1f} m")
         self.target_depth_text.setText(f"Target depth: {self.target_depth_m:0.1f} m")
         self.layer_speed_text.setText(
             f"Layer: {self._current_layer_name()} | cluster: {self._current_layer_cluster_id()} | "
-            f"speed: {self._current_drilling_speed():0.3f} m/s"
+            f"speed: {self.current_drilling_speed_mps:0.3f} m/s"
         )
 
     def _sync(self) -> None:
@@ -984,6 +1001,7 @@ class SideViewWidget(QWidget):
         self.depth_line.setLine(bx + 18, indicator_y, bx + 94, indicator_y)
         self.depth_text.setText(f"{self.depth_m:0.1f} m")
         self.depth_text.setPos(bx + 100, min(indicator_y, SECTION_BOTTOM - 12))
+        self._sync_tool_parameter_labels(car_y, bit_y)
 
     def _reset(self) -> None:
         """Возвращает все динамические элементы в начальное положение."""
@@ -1004,6 +1022,18 @@ class SideViewWidget(QWidget):
         self.depth_line.setLine(PIPE_X + 18, SECTION_TOP, PIPE_X + 94, SECTION_TOP)
         self.depth_text.setText("0.0 m")
         self.depth_text.setPos(PIPE_X + 100, SECTION_TOP)
+        self._sync_tool_parameter_labels(CARRIAGE_TOP_Y, self._bit_y())
+
+    def _sync_tool_parameter_labels(self, car_y: float, bit_y: float) -> None:
+        self.carriage_rot_label.setText(f"rotation: {self.rot_speed_rpm:0.0f} rpm")
+        self.carriage_rot_label.setPos(PIPE_X + 42, car_y + CARRIAGE_H / 2 - 8)
+
+        self.carriage_axial_label.setText(f"axial: {self.axial_pressure_kn:0.0f} kN")
+        self.carriage_axial_label.setPos(PIPE_X + 42, car_y + CARRIAGE_H / 2 + 10)
+
+        bit_label_y = min(bit_y + BIT_BODY_H + 16, SECTION_BOTTOM - 44)
+        self.bit_speed_label.setText(f"speed: {self.current_drilling_speed_mps:0.3f} m/s")
+        self.bit_speed_label.setPos(PIPE_X + 42, bit_label_y)
 
     def _place_bit(self, bit_y: float) -> None:
         bx = PIPE_X

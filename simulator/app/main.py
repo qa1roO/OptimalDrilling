@@ -8,5 +8,5 @@ from .window import SimulatorMainWindow
 def run() -> int:
     app = QApplication(sys.argv)
     window = SimulatorMainWindow()
-    window.show()
+    window.showMaximized()
     return app.exec()
