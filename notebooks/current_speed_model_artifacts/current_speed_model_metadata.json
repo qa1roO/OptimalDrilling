@@ -1,0 +1,46 @@
+{
+  "model_name": "LightGBM",
+  "data_path": "united_with_rock_energy_classes_gmm.csv",
+  "target": "speed",
+  "numeric_features": [
+    "pressure_axis",
+    "pressure_rotation",
+    "rotation",
+    "hardness_score",
+    "pressure_balance",
+    "axis_over_rot_pressure",
+    "rotation_efficiency",
+    "axis_x_rotation",
+    "rot_pressure_x_rotation",
+    "total_pressure",
+    "pressure_axis_lag1",
+    "pressure_axis_lag3",
+    "pressure_axis_lag6",
+    "pressure_rotation_lag1",
+    "pressure_rotation_lag3",
+    "pressure_rotation_lag6",
+    "rotation_lag1",
+    "rotation_lag3",
+    "rotation_lag6",
+    "hardness_score_lag1",
+    "hardness_score_lag3",
+    "hardness_score_lag6",
+    "pressure_axis_roll_mean_6",
+    "pressure_axis_roll_std_6",
+    "pressure_rotation_roll_mean_6",
+    "pressure_rotation_roll_std_6",
+    "rotation_roll_mean_6",
+    "rotation_roll_std_6",
+    "hardness_score_roll_mean_6",
+    "hardness_score_roll_std_6"
+  ],
+  "categorical_features": [
+    "rock_energy_type_final"
+  ],
+  "cluster_col": "rock_energy_type_final",
+  "metrics": {
+    "mae": 0.0029690504317097586,
+    "rmse": 0.003971592686520011,
+    "r2": 0.6208101394923383
+  }
+}
