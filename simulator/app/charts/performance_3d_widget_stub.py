@@ -28,8 +28,6 @@ class Performance3DWidget(QWidget):
         self.surface_size_y = 120.0
         self.surface_height = 42.0
         self.depth_axis_max_m = 42.0
-        self.axial_effort_span = 180.0
-        self.rotation_effort_span = 130.0
         self._plot_items: list = []
         self._surface_items: list = []
         self._live_points: list[DrillingPoint] = []
@@ -42,15 +40,20 @@ class Performance3DWidget(QWidget):
         self._active_profile: ClusterProfile | None = None
         self._active_cluster_id: int | None = None
         self._segment_start_time_s: float | None = None
+        self._segment_start_depth_m: float | None = None
+        self._segment_start_point_value: DrillingPoint | None = None
+        self._active_speed_target: float | None = None
         self._graph_start_time_s: float | None = None
         self._graph_start_depth_m: float | None = None
         self._transition_duration_s = 10.0
+        self._transition_depth_m = 3.0
+        self._live_speed_min = 0.003
+        self._live_speed_max = 0.035
+        self._initial_rotation_rpm = 100.0
         self._fast_speed_drop_ratio = 0.12
         self._initial_speed_drop_k = 0.72
         self._surface_rotation_center = 100.0
         self._surface_speed_center = 0.02
-        self._surface_axial_center = 430.0
-        self._surface_rotation_effort_center = 230.0
         self._rotation_span = 44.0
         self._speed_span = 0.035
 
@@ -93,6 +96,9 @@ class Performance3DWidget(QWidget):
         self._active_profile = None
         self._active_cluster_id = None
         self._segment_start_time_s = None
+        self._segment_start_depth_m = None
+        self._segment_start_point_value = None
+        self._active_speed_target = None
         self._graph_start_time_s = None
         self._graph_start_depth_m = None
         self._clear_plot_items()
@@ -133,8 +139,17 @@ class Performance3DWidget(QWidget):
             point = DrillingPoint(time_s=time_s, rotation=rotation, speed=speed, source="model")
         else:
             if self._active_cluster_id != cluster_id:
-                self._start_layer_segment(cluster_id=cluster_id, time_s=time_s, depth_m=depth_m)
-            point = self._interpolated_profile_point(time_s)
+                self._start_layer_segment(
+                    cluster_id=cluster_id,
+                    time_s=time_s,
+                    depth_m=depth_m,
+                    live_speed=speed,
+                )
+            point = self._interpolated_profile_point(
+                time_s=time_s,
+                depth_m=depth_m,
+                live_speed=speed,
+            )
 
         self._live_points.append(point)
         self._live_depths_m.append(depth_m)
@@ -201,6 +216,7 @@ class Performance3DWidget(QWidget):
         plot.setLabel("bottom", "depth", units="m", color="#b7c4d2")
         plot.setLabel("left", left_label, color="#b7c4d2")
         plot.showGrid(x=True, y=True, alpha=0.22)
+        plot.hideButtons()
         plot.setXRange(0.0, self.depth_axis_max_m, padding=0)
         plot.setLimits(xMin=0.0, xMax=self.depth_axis_max_m)
         plot.getAxis("bottom").setPen(pg.mkPen("#5f7082"))
@@ -224,48 +240,42 @@ class Performance3DWidget(QWidget):
         grid.setSpacing(x=20, y=15)
         view.addItem(grid)
 
-        self._add_3d_axis_labels(view)
+        self._add_text_item(view, "rotation", (self.surface_size_x / 2 + 10, -8, 0))
+        self._add_text_item(view, "speed", (-12, self.surface_size_y / 2 + 12, 0))
+        self._add_text_item(view, "surface", (-10, -10, self.surface_height + 8))
         return view
 
-    def _add_3d_axis_labels(self, view) -> None:
-        self._add_text_item(view, "Axial effort, kN", (self.surface_size_x / 2 + 10, -8, 0))
-        self._add_text_item(view, "Rotation effort, kN*m", (-12, self.surface_size_y / 2 + 12, 0))
-        self._add_text_item(view, "Drilling speed, m/s", (-10, -10, self.surface_height + 8))
-
-        for effort in range(340, 521, 60):
-            x = self._axial_effort_to_surface_x(float(effort))
-            self._add_text_item(view, str(effort), (x, -10, 0), font_size=7)
-        for effort in range(170, 291, 40):
-            y = self._rotation_effort_to_surface_y(float(effort))
-            self._add_text_item(view, str(effort), (-10, y, 0), font_size=7)
-        for speed in (0.00, 0.01, 0.02, 0.03, 0.04):
-            z = self._speed_to_surface_z(speed)
-            self._add_text_item(view, f"{speed:0.2f}", (-8, -8, z), font_size=7)
-
-    def _add_text_item(self, view, text: str, pos: tuple[float, float, float], font_size: int = 9) -> None:
+    def _add_text_item(self, view, text: str, pos: tuple[float, float, float]) -> None:
         item = gl.GLTextItem(
             pos=pos,
             text=text,
             color=(225, 234, 244, 255),
-            font=QFont("Segoe UI", font_size),
+            font=QFont("Segoe UI", 9),
             alignment=Qt.AlignLeft | Qt.AlignBottom,
         )
         view.addItem(item)
 
-    def _start_layer_segment(self, cluster_id: int, time_s: float, depth_m: float) -> None:
+    def _start_layer_segment(
+        self,
+        cluster_id: int,
+        time_s: float,
+        depth_m: float,
+        live_speed: float,
+    ) -> None:
         self._ensure_cluster_profiles()
         previous_point = self._live_points[-1] if self._live_points else None
         self._active_profile = self._cluster_profiles.get(cluster_id)
         self._active_cluster_id = cluster_id
         self._segment_start_time_s = time_s
+        self._segment_start_depth_m = depth_m
         if self._graph_start_time_s is None:
             self._graph_start_time_s = time_s
         if self._graph_start_depth_m is None:
             self._graph_start_depth_m = depth_m
 
-        start_point = self._segment_start_point(time_s, previous_point)
-        self._live_points.append(start_point)
-        self._live_depths_m.append(depth_m)
+        start_point = self._segment_start_point(time_s, previous_point, live_speed)
+        self._segment_start_point_value = start_point
+        self._active_speed_target = self._target_live_speed(start_point.speed)
         self._surface_segment_points = [start_point]
         self._draw_cluster_surface()
         self._set_2d_targets()
@@ -277,16 +287,18 @@ class Performance3DWidget(QWidget):
             return
 
         self._surface_rotation_center = self._active_profile.optimal_rotation
-        self._surface_speed_center = self._active_profile.optimal_speed
-        self._surface_axial_center = 430.0
-        self._surface_rotation_effort_center = 230.0
+        self._surface_speed_center = self._active_speed_target or self._active_profile.optimal_speed
         self._rotation_span = max(abs(self._active_profile.optimal_rotation - self._active_profile.avg_rotation) * 3.0, 34.0)
-        self._speed_span = max(abs(self._active_profile.optimal_speed - self._active_profile.avg_speed) * 3.0, 0.018)
+        start_speed = self._segment_start_point_value.speed if self._segment_start_point_value is not None else self._surface_speed_center
+        self._speed_span = max(abs(self._surface_speed_center - start_speed) * 3.0, 0.018)
 
-        x = np.linspace(-self.surface_size_x / 2, self.surface_size_x / 2, 34)
-        y = np.linspace(-self.surface_size_y / 2, self.surface_size_y / 2, 28)
+        x = np.linspace(-self.surface_size_x / 2, self.surface_size_x / 2, 36)
+        y = np.linspace(-self.surface_size_y / 2, self.surface_size_y / 2, 30)
         xx, yy = np.meshgrid(x, y, indexing="ij")
-        z = self._surface_z_from_xy(xx, yy)
+        z = self.surface_height * (0.88 - 0.38 * ((xx / (self.surface_size_x / 2)) ** 2 + (yy / (self.surface_size_y / 2)) ** 2))
+        z += 4.0 * np.sin((xx + self._active_profile.cluster_id * 8.0) / 24.0)
+        z += 2.5 * np.cos((yy - self._active_profile.cluster_id * 5.0) / 18.0)
+        z = np.clip(z, 3.0, self.surface_height)
 
         surface = gl.GLSurfacePlotItem(
             x=x,
@@ -298,50 +310,7 @@ class Performance3DWidget(QWidget):
         self.surface_view.addItem(surface)
         self._surface_items.append(surface)
 
-        self._add_surface_wire_grid(x, y)
-        self._add_start_marker()
         self._add_target_marker()
-
-    def _add_surface_wire_grid(self, x_values, y_values) -> None:
-        grid_color = (0.74, 0.86, 0.96, 0.34)
-        for x in x_values[::4]:
-            y_line = y_values
-            x_line = np.full_like(y_line, x)
-            z_line = self._surface_z_from_xy(x_line, y_line) + 0.35
-            item = gl.GLLinePlotItem(
-                pos=np.column_stack([x_line, y_line, z_line]),
-                color=grid_color,
-                width=1,
-                antialias=True,
-                mode="line_strip",
-            )
-            self.surface_view.addItem(item)
-            self._surface_items.append(item)
-        for y in y_values[::4]:
-            x_line = x_values
-            y_line = np.full_like(x_line, y)
-            z_line = self._surface_z_from_xy(x_line, y_line) + 0.35
-            item = gl.GLLinePlotItem(
-                pos=np.column_stack([x_line, y_line, z_line]),
-                color=grid_color,
-                width=1,
-                antialias=True,
-                mode="line_strip",
-            )
-            self.surface_view.addItem(item)
-            self._surface_items.append(item)
-
-    def _add_start_marker(self) -> None:
-        if not self._surface_segment_points:
-            return
-        marker = gl.GLScatterPlotItem(
-            pos=self._surface_points_to_array([self._surface_segment_points[0]], lift=3.0),
-            color=(0.20, 0.78, 1.0, 1.0),
-            size=12,
-            pxMode=True,
-        )
-        self.surface_view.addItem(marker)
-        self._surface_items.append(marker)
 
     def _add_target_marker(self) -> None:
         if self._active_profile is None:
@@ -350,7 +319,7 @@ class Performance3DWidget(QWidget):
         target = DrillingPoint(
             time_s=(self._segment_start_time_s or 0.0) + self._transition_duration_s,
             rotation=self._active_profile.optimal_rotation,
-            speed=self._active_profile.optimal_speed,
+            speed=self._active_speed_target or self._active_profile.optimal_speed,
             source="target",
             cluster_id=self._active_profile.cluster_id,
         )
@@ -368,8 +337,11 @@ class Performance3DWidget(QWidget):
             return
         self.rotation_target_line.setValue(self._active_profile.optimal_rotation)
         self.rotation_target_line.show()
-        self.speed_target_line.setValue(self._active_profile.optimal_speed)
-        self.speed_target_line.show()
+        if self._active_speed_target is not None:
+            self.speed_target_line.setValue(self._active_speed_target)
+            self.speed_target_line.show()
+        else:
+            self.speed_target_line.hide()
 
     def _update_live_views(self, depth_m: float) -> None:
         first_depth = self._graph_start_depth_m
@@ -412,40 +384,29 @@ class Performance3DWidget(QWidget):
         return np.array(
             [
                 [
-                    self._axial_effort_to_surface_x(self._point_axial_effort(point)),
-                    self._rotation_effort_to_surface_y(self._point_rotation_effort(point)),
-                    self._speed_to_surface_z(point.speed) + lift,
+                    self._rotation_to_surface_x(point.rotation),
+                    self._speed_to_surface_y(point.speed),
+                    self._surface_z(point.rotation, point.speed) + lift,
                 ]
                 for point in points
             ],
             dtype=float,
         )
 
-    def _point_axial_effort(self, point: DrillingPoint) -> float:
-        speed_term = (self._surface_speed_center - point.speed) / max(self._speed_span, 0.001)
-        rotation_term = (point.rotation - self._surface_rotation_center) / max(self._rotation_span, 1.0)
-        return self._surface_axial_center + speed_term * 42.0 + rotation_term * 18.0
+    def _rotation_to_surface_x(self, rotation: float) -> float:
+        return ((rotation - self._surface_rotation_center) / self._rotation_span) * self.surface_size_x
 
-    def _point_rotation_effort(self, point: DrillingPoint) -> float:
-        rotation_term = (point.rotation - self._surface_rotation_center) / max(self._rotation_span, 1.0)
-        speed_term = (point.speed - self._surface_speed_center) / max(self._speed_span, 0.001)
-        return self._surface_rotation_effort_center + rotation_term * 36.0 + speed_term * 10.0
+    def _speed_to_surface_y(self, speed: float) -> float:
+        return ((speed - self._surface_speed_center) / self._speed_span) * self.surface_size_y
 
-    def _axial_effort_to_surface_x(self, axial_effort: float) -> float:
-        return ((axial_effort - self._surface_axial_center) / self.axial_effort_span) * self.surface_size_x
-
-    def _rotation_effort_to_surface_y(self, rotation_effort: float) -> float:
-        return ((rotation_effort - self._surface_rotation_effort_center) / self.rotation_effort_span) * self.surface_size_y
-
-    def _speed_to_surface_z(self, speed: float) -> float:
-        return float(np.clip((speed / 0.04) * self.surface_height, 3.0, self.surface_height))
-
-    def _surface_z_from_xy(self, x, y):
-        z = self.surface_height * (0.80 - 0.33 * ((x / (self.surface_size_x / 2)) ** 2 + (y / (self.surface_size_y / 2)) ** 2))
+    def _surface_z(self, rotation: float, speed: float) -> float:
+        x = self._rotation_to_surface_x(rotation)
+        y = self._speed_to_surface_y(speed)
+        z = self.surface_height * (0.88 - 0.38 * ((x / (self.surface_size_x / 2)) ** 2 + (y / (self.surface_size_y / 2)) ** 2))
         if self._active_profile is not None:
             z += 4.0 * np.sin((x + self._active_profile.cluster_id * 8.0) / 24.0)
             z += 2.5 * np.cos((y - self._active_profile.cluster_id * 5.0) / 18.0)
-        return np.clip(z, 3.0, self.surface_height)
+        return float(np.clip(z, 3.0, self.surface_height))
 
     def _clear_plot_items(self) -> None:
         for item in self._plot_items:
@@ -474,10 +435,15 @@ class Performance3DWidget(QWidget):
 
     def _profile_start_point(self, time_s: float) -> DrillingPoint:
         if self._active_profile is None:
-            return DrillingPoint(time_s=time_s, rotation=0.0, speed=0.0, cluster_id=self._active_cluster_id)
+            return DrillingPoint(
+                time_s=time_s,
+                rotation=self._initial_rotation_rpm,
+                speed=0.0,
+                cluster_id=self._active_cluster_id,
+            )
         return DrillingPoint(
             time_s=time_s,
-            rotation=self._active_profile.avg_rotation,
+            rotation=self._initial_rotation_rpm,
             speed=self._active_profile.avg_speed,
             source="cluster-average",
             cluster_id=self._active_profile.cluster_id,
@@ -487,45 +453,68 @@ class Performance3DWidget(QWidget):
         self,
         time_s: float,
         previous_point: DrillingPoint | None,
+        live_speed: float | None = None,
     ) -> DrillingPoint:
         if previous_point is None:
-            return self._profile_start_point(time_s)
+            point = self._profile_start_point(time_s)
+            if live_speed is None:
+                return point
+            return DrillingPoint(
+                time_s=point.time_s,
+                rotation=point.rotation,
+                speed=live_speed,
+                source=point.source,
+                cluster_id=point.cluster_id,
+            )
         return DrillingPoint(
             time_s=time_s,
             rotation=previous_point.rotation,
-            speed=previous_point.speed,
+            speed=live_speed if live_speed is not None else previous_point.speed,
             source="layer-transition",
             cluster_id=self._active_cluster_id,
         )
 
-    def _interpolated_profile_point(self, time_s: float) -> DrillingPoint:
+    def _interpolated_profile_point(self, time_s: float, depth_m: float, live_speed: float) -> DrillingPoint:
         assert self._active_profile is not None
         assert self._segment_start_time_s is not None
         start_point = self._segment_start_value()
-        k = min(max((time_s - self._segment_start_time_s) / self._transition_duration_s, 0.0), 1.0)
+        if self._segment_start_depth_m is not None:
+            k = (depth_m - self._segment_start_depth_m) / self._transition_depth_m
+        else:
+            k = (time_s - self._segment_start_time_s) / self._transition_duration_s
+        k = min(max(k, 0.0), 1.0)
         smooth_k = k * k * (3.0 - 2.0 * k)
-        speed_k = smooth_k
-        if self._active_profile.optimal_speed < start_point.speed:
-            fast_k = min(k / self._fast_speed_drop_ratio, 1.0)
-            speed_k = max(self._initial_speed_drop_k, fast_k)
+        target_speed = self._active_speed_target
+        if target_speed is None:
+            target_speed = live_speed
         return DrillingPoint(
             time_s=time_s,
             rotation=_lerp(start_point.rotation, self._active_profile.optimal_rotation, smooth_k),
-            speed=_lerp(start_point.speed, self._active_profile.optimal_speed, speed_k),
+            speed=_lerp(start_point.speed, target_speed, smooth_k),
             source="model",
             cluster_id=self._active_profile.cluster_id,
         )
 
     def _segment_start_value(self) -> DrillingPoint:
         assert self._segment_start_time_s is not None
-        for point in reversed(self._surface_segment_points):
-            if point.time_s == self._segment_start_time_s:
-                return point
+        if self._segment_start_point_value is not None:
+            return self._segment_start_point_value
         return self._profile_start_point(self._segment_start_time_s)
+
+    def _target_live_speed(self, start_speed: float) -> float:
+        if self._active_profile is None or self._active_profile.avg_speed <= 0:
+            return _clamp(start_speed, self._live_speed_min, self._live_speed_max)
+        model_ratio = self._active_profile.optimal_speed / self._active_profile.avg_speed
+        model_ratio = _clamp(model_ratio, 1.08, 1.35)
+        return _clamp(start_speed * model_ratio, self._live_speed_min, self._live_speed_max)
 
 
 def _lerp(start: float, end: float, k: float) -> float:
     return start + (end - start) * k
+
+
+def _clamp(value: float, minimum: float, maximum: float) -> float:
+    return max(min(value, maximum), minimum)
 
 
 Performance3DWidgetStub = Performance3DWidget
