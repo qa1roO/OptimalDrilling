@@ -47,6 +47,10 @@ class Performance3DWidget(QWidget):
         self._graph_start_depth_m: float | None = None
         self._transition_duration_s = 10.0
         self._transition_depth_m = 3.0
+        self._active_rotation_transition_depth_m = self._transition_depth_m
+        self._previous_rotation_drop_rpm = 0.0
+        self._rotation_growth_base_slowdown = 1.35
+        self._rotation_drop_slowdown_per_10rpm = 0.28
         self._live_speed_min = 0.003
         self._live_speed_max = 0.035
         self._initial_rotation_rpm = 100.0
@@ -99,6 +103,8 @@ class Performance3DWidget(QWidget):
         self._segment_start_depth_m = None
         self._segment_start_point_value = None
         self._active_speed_target = None
+        self._active_rotation_transition_depth_m = self._transition_depth_m
+        self._previous_rotation_drop_rpm = 0.0
         self._graph_start_time_s = None
         self._graph_start_depth_m = None
         self._clear_plot_items()
@@ -264,6 +270,7 @@ class Performance3DWidget(QWidget):
     ) -> None:
         self._ensure_cluster_profiles()
         previous_point = self._live_points[-1] if self._live_points else None
+        previous_drop = self._current_segment_rotation_drop()
         self._active_profile = self._cluster_profiles.get(cluster_id)
         self._active_cluster_id = cluster_id
         self._segment_start_time_s = time_s
@@ -276,6 +283,8 @@ class Performance3DWidget(QWidget):
         start_point = self._segment_start_point(time_s, previous_point, live_speed)
         self._segment_start_point_value = start_point
         self._active_speed_target = self._target_live_speed(start_point.speed)
+        self._previous_rotation_drop_rpm = previous_drop
+        self._active_rotation_transition_depth_m = self._rotation_transition_depth(start_point.rotation)
         self._surface_segment_points = [start_point]
         self._draw_cluster_surface()
         self._set_2d_targets()
@@ -479,18 +488,22 @@ class Performance3DWidget(QWidget):
         assert self._segment_start_time_s is not None
         start_point = self._segment_start_value()
         if self._segment_start_depth_m is not None:
-            k = (depth_m - self._segment_start_depth_m) / self._transition_depth_m
+            speed_k = (depth_m - self._segment_start_depth_m) / self._transition_depth_m
+            rotation_k = (depth_m - self._segment_start_depth_m) / self._active_rotation_transition_depth_m
         else:
-            k = (time_s - self._segment_start_time_s) / self._transition_duration_s
-        k = min(max(k, 0.0), 1.0)
-        smooth_k = k * k * (3.0 - 2.0 * k)
+            speed_k = (time_s - self._segment_start_time_s) / self._transition_duration_s
+            rotation_k = speed_k
+        speed_k = min(max(speed_k, 0.0), 1.0)
+        rotation_k = min(max(rotation_k, 0.0), 1.0)
+        speed_smooth_k = speed_k * speed_k * (3.0 - 2.0 * speed_k)
+        rotation_smooth_k = rotation_k * rotation_k * (3.0 - 2.0 * rotation_k)
         target_speed = self._active_speed_target
         if target_speed is None:
             target_speed = live_speed
         return DrillingPoint(
             time_s=time_s,
-            rotation=_lerp(start_point.rotation, self._active_profile.optimal_rotation, smooth_k),
-            speed=_lerp(start_point.speed, target_speed, smooth_k),
+            rotation=_lerp(start_point.rotation, self._active_profile.optimal_rotation, rotation_smooth_k),
+            speed=_lerp(start_point.speed, target_speed, speed_smooth_k),
             source="model",
             cluster_id=self._active_profile.cluster_id,
         )
@@ -507,6 +520,22 @@ class Performance3DWidget(QWidget):
         model_ratio = self._active_profile.optimal_speed / self._active_profile.avg_speed
         model_ratio = _clamp(model_ratio, 1.08, 1.35)
         return _clamp(start_speed * model_ratio, self._live_speed_min, self._live_speed_max)
+
+    def _current_segment_rotation_drop(self) -> float:
+        if self._segment_start_point_value is None or not self._surface_segment_points:
+            return 0.0
+        min_rotation = min(point.rotation for point in self._surface_segment_points)
+        return max(self._segment_start_point_value.rotation - min_rotation, 0.0)
+
+    def _rotation_transition_depth(self, start_rotation: float) -> float:
+        if self._active_profile is None:
+            return self._transition_depth_m
+        if self._active_profile.optimal_rotation <= start_rotation:
+            return self._transition_depth_m
+
+        drop_factor = min(self._previous_rotation_drop_rpm, 35.0) / 10.0
+        slowdown = self._rotation_growth_base_slowdown + drop_factor * self._rotation_drop_slowdown_per_10rpm
+        return self._transition_depth_m * slowdown
 
 
 def _lerp(start: float, end: float, k: float) -> float:
