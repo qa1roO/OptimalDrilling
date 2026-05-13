@@ -1,0 +1,47 @@
+{
+  "data_path": "../datasets/united.csv",
+  "output_path": "united_rock_energy_segment_quantile.csv",
+  "final_method": "energy_type_segment_quantile",
+  "segment_size": 60,
+  "labels": [
+    "soft_low_energy",
+    "medium_low_energy",
+    "medium_high_energy",
+    "hard_high_energy"
+  ],
+  "control_features_for_residual": [
+    "pressure_axis",
+    "pressure_rotation",
+    "rotation",
+    "total_pressure",
+    "pressure_balance",
+    "axis_over_rot_pressure",
+    "rot_pressure_over_axis",
+    "rotation_efficiency",
+    "axis_x_rotation",
+    "rot_pressure_x_rotation",
+    "energy_input_proxy",
+    "log_energy_input_proxy"
+  ],
+  "surface_features": [
+    "pressure_axis",
+    "pressure_rotation",
+    "rotation",
+    "hardness_score_smooth",
+    "pressure_balance",
+    "axis_over_rot_pressure",
+    "rot_pressure_over_axis",
+    "rotation_efficiency",
+    "energy_input_proxy"
+  ],
+  "residual_model_metrics": {
+    "mae": 0.004749562337001684,
+    "rmse": 0.006027965208514162,
+    "r2": 0.17247647002681832
+  },
+  "interpretation": {
+    "hardness_score_smooth": "continuous operational drilling resistance index",
+    "rock_energy_type_final": "final discrete energy-response regime from segment-level quantile segmentation",
+    "pseudo_mse": "proxy energy per penetration, not physical MSE"
+  }
+}

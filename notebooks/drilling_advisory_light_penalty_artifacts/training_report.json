@@ -1,0 +1,116 @@
+{
+  "rotation_model_near5": {
+    "MAE": 1.7421710914006923,
+    "RMSE": 3.5951100994974317,
+    "R2": 0.8170699552751975
+  },
+  "speed_model_oracle_rotation_near5": {
+    "MAE": 0.0019413656994948848,
+    "RMSE": 0.00262545506696225,
+    "R2": 0.7542510850043698
+  },
+  "speed_model_chained_near5": {
+    "MAE": 0.0020348074026072553,
+    "RMSE": 0.0027360240721880573,
+    "R2": 0.733116172613802
+  },
+  "baseline_compare": [
+    {
+      "model": "speed_oracle_rotation_near5",
+      "MAE": 0.0019413656994948848,
+      "RMSE": 0.00262545506696225,
+      "R2": 0.7542510850043698
+    },
+    {
+      "model": "rotation_to_speed_chained_near5",
+      "MAE": 0.0020348074026072553,
+      "RMSE": 0.0027360240721880573,
+      "R2": 0.733116172613802
+    },
+    {
+      "model": "speed_roll_mean_12",
+      "MAE": 0.002483222308654458,
+      "RMSE": 0.0034031548557259057,
+      "R2": 0.5870990785733583
+    },
+    {
+      "model": "current_speed",
+      "MAE": 0.0035119783247643927,
+      "RMSE": 0.0045283771318771595,
+      "R2": 0.26891544982869
+    }
+  ],
+  "optimizer_summary": [
+    {
+      "optimizer_mode": "light_penalty",
+      "rows": 2500,
+      "median_uplift_pct": 2.2865757778163687,
+      "mean_uplift_pct": 3.051283967491647,
+      "p05_uplift_pct": 0.14799205246997627,
+      "p95_uplift_pct": 8.76509649757399,
+      "median_score_uplift_pct": 1.8366214634025546,
+      "median_delta_axis_pct": -1.6000000047933394,
+      "median_delta_rot_pct": 5.599999992142846,
+      "median_abs_delta_axis_pct": 3.2620232678407577,
+      "median_abs_delta_rot_pct": 5.599999992896554,
+      "axis_boundary_ratio": 0.01,
+      "rot_boundary_ratio": 0.0264,
+      "any_boundary_ratio": 0.0356
+    }
+  ],
+  "uplift_by_energy_type": [
+    {
+      "rock_energy_type_final": "hard_high_energy",
+      "rows": 668,
+      "median_uplift_pct": 3.8977670837643807,
+      "mean_uplift_pct": 4.737958222397605,
+      "p05_uplift_pct": 0.7001518519739214,
+      "p95_uplift_pct": 11.542162451476926,
+      "median_delta_axis_pct": -1.6000000061340947,
+      "median_delta_rot_pct": 6.399999992238115,
+      "median_abs_delta_axis_pct": 4.0000000046654165,
+      "median_abs_delta_rot_pct": 6.399999992279781,
+      "boundary_ratio": 0.061377245508982034
+    },
+    {
+      "rock_energy_type_final": "medium_high_energy",
+      "rows": 571,
+      "median_uplift_pct": 3.186342616991955,
+      "mean_uplift_pct": 3.7849816649180017,
+      "p05_uplift_pct": 0.44395442531453,
+      "p95_uplift_pct": 9.18295596540386,
+      "median_delta_axis_pct": -2.4000000058060578,
+      "median_delta_rot_pct": 6.399999992290417,
+      "median_abs_delta_axis_pct": 3.9999999941572995,
+      "median_abs_delta_rot_pct": 6.399999992309358,
+      "boundary_ratio": 0.0542907180385289
+    },
+    {
+      "rock_energy_type_final": "medium_low_energy",
+      "rows": 629,
+      "median_uplift_pct": 1.8822729605481925,
+      "mean_uplift_pct": 2.32921303864131,
+      "p05_uplift_pct": 0.24846276790889912,
+      "p95_uplift_pct": 5.71220509053727,
+      "median_delta_axis_pct": -1.600000004912383,
+      "median_delta_rot_pct": 5.599999992152793,
+      "median_abs_delta_axis_pct": 3.1999999948840063,
+      "median_abs_delta_rot_pct": 5.599999992761173,
+      "boundary_ratio": 0.01589825119236884
+    },
+    {
+      "rock_energy_type_final": "soft_low_energy",
+      "rows": 632,
+      "median_uplift_pct": 0.9189408494241103,
+      "mean_uplift_pct": 1.3242947692942337,
+      "p05_uplift_pct": 0.004635637215505428,
+      "p95_uplift_pct": 4.267325620078105,
+      "median_delta_axis_pct": -8.876144264036157e-09,
+      "median_delta_rot_pct": 0.7999999939460656,
+      "median_abs_delta_axis_pct": 3.1994770956991267,
+      "median_abs_delta_rot_pct": 2.3999999938046246,
+      "boundary_ratio": 0.011075949367088608
+    }
+  ],
+  "final_optimizer_mode": "light_penalty"
+}
