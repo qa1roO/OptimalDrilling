@@ -21,7 +21,7 @@ DATASET_PATHS = (
 )
 KMEANS_PATH = SIMULATOR_CORE_DIR / "kmeans_k7.joblib"
 SCALER_PATH = SIMULATOR_CORE_DIR / "scaler_k7.joblib"
-OPTIMALS_PATH = Path(r"C:\Users\stas2\Downloads\optimals.csv")
+OPTIMALS_PATH = SIMULATOR_CORE_DIR / "optimals.csv"
 FEATURE_COLUMNS = ("pressure_axis", "pressure_rotation", "rotation", "speed")
 
 
