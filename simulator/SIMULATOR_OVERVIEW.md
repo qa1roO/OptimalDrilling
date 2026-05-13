@@ -65,24 +65,9 @@ self.side_view.drilling_cycle_started.connect(self.performance_chart.on_drilling
 simulator/app/scene/side_view_widget.py
 ```
 
-`SideViewWidget` рисует боковой вид буровой установки через
-`pyqtgraph.GraphicsLayoutWidget` и `QGraphics*Item`.
-
-На сцене есть:
-
-- буровая установка;
-- гусеничное основание;
-- кабина;
-- мачта;
-- каретка;
-- вращатель / мотор;
-- бурильная труба;
-- шарошка / долото;
-- скважина;
-- слои породы;
-- индикатор глубины;
-- текстовые параметры;
-- локальные лейблы около рабочих органов.
+`SideViewWidget` отвечает за левую live-сцену симулятора: хранит текущую
+глубину, определяет активный слой, двигает буровой инструмент и отправляет
+данные в правую панель графиков.
 
 Геометрия сцены задается константами в начале файла, например:
 
@@ -472,18 +457,11 @@ DATASET_PATHS = (
 
 KMEANS_PATH = SIMULATOR_CORE_DIR / "kmeans_k7.joblib"
 SCALER_PATH = SIMULATOR_CORE_DIR / "scaler_k7.joblib"
+OPTIMALS_PATH = SIMULATOR_CORE_DIR / "optimals.csv"
 ```
 
-В текущем `main` `OPTIMALS_PATH` все еще указывает на абсолютный локальный путь:
-
-```python
-OPTIMALS_PATH = Path(r"C:\Users\stas2\Downloads\optimals.csv")
-```
-
-Это потенциальная проблема переносимости. Если файла нет у другого пользователя,
-код не падает сразу, но использует fallback: ищет оптимумы по датасетам, выбирая
-максимальную speed внутри кластера. Из-за этого графики у разных пользователей
-могут отличаться.
+Все основные артефакты, влияющие на логику графиков, хранятся внутри
+репозитория и доступны после `git pull`.
 
 ## Модельные артефакты
 
@@ -492,10 +470,11 @@ OPTIMALS_PATH = Path(r"C:\Users\stas2\Downloads\optimals.csv")
 ```text
 simulator/simulator_core/kmeans_k7.joblib
 simulator/simulator_core/scaler_k7.joblib
+simulator/simulator_core/optimals.csv
 ```
 
-`optimals.csv` в текущем `main` не лежит рядом с ними, хотя логически должен
-быть там же.
+`optimals.csv` хранится рядом с `kmeans` и `scaler`, чтобы симулятор не зависел
+от локальных файлов конкретного разработчика.
 
 ## Датасеты
 
@@ -616,22 +595,3 @@ ML-артефакты, датасеты и обучение модели луч�
 - масштаб оси глубины `0..42 м`;
 - live-непрерывность между слоями;
 - локальные подписи на буровой сцене.
-
-## Известный риск текущего main
-
-В текущем состоянии репозитория есть риск несовпадения поведения у разных
-пользователей из-за:
-
-```python
-OPTIMALS_PATH = Path(r"C:\Users\stas2\Downloads\optimals.csv")
-```
-
-Если цель - одинаковый запуск после `git pull`, нужно перенести `optimals.csv`
-в `simulator/simulator_core` и заменить путь на:
-
-```python
-OPTIMALS_PATH = SIMULATOR_CORE_DIR / "optimals.csv"
-```
-
-Такой фикс ранее был подготовлен в отдельной ветке `simulator-core-optimals`, но
-в текущую `main` он не влит.
