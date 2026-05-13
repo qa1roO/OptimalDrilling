@@ -12,13 +12,15 @@ from sklearn.exceptions import InconsistentVersionWarning
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
+SIMULATOR_ROOT = Path(__file__).resolve().parents[2]
+SIMULATOR_CORE_DIR = SIMULATOR_ROOT / "simulator_core"
 DATASETS_DIR = PROJECT_ROOT / "datasets"
 DATASET_PATHS = (
     DATASETS_DIR / "dataset_1.csv",
     DATASETS_DIR / "dataset_2.csv",
 )
-KMEANS_PATH = Path(r"C:\Users\stas2\Downloads\kmeans_k7.joblib")
-SCALER_PATH = Path(r"C:\Users\stas2\Downloads\scaler_k7.joblib")
+KMEANS_PATH = SIMULATOR_CORE_DIR / "kmeans_k7.joblib"
+SCALER_PATH = SIMULATOR_CORE_DIR / "scaler_k7.joblib"
 OPTIMALS_PATH = Path(r"C:\Users\stas2\Downloads\optimals.csv")
 FEATURE_COLUMNS = ("pressure_axis", "pressure_rotation", "rotation", "speed")
 
