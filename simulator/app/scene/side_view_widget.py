@@ -19,8 +19,10 @@ Z-порядок отрисовки (снизу вверх):
   - При сбросе: только геология меняется, всё остальное — setRect в начало
 """
 
+import csv
 import math
 import random
+from pathlib import Path
 
 import pyqtgraph as pg
 from PySide6.QtCore import QRectF, QTimer, Qt, Signal
@@ -34,7 +36,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .rock_layer_generator_stub import generate_rock_layers
+from .rock_layer_generator_stub import ENERGY_TYPE_TO_ID, generate_rock_layers
 
 # ---------- Геометрия сцены ----------
 SCENE_W = 900.0
@@ -107,10 +109,12 @@ Z_OVERLAY = 40.0
 
 BIT_TIP_OFFSET_Y = BIT_CONE_OFFSET_Y + BIT_CONE_H
 PIPE_END_OFFSET_M = (BIT_TIP_OFFSET_Y / SECTION_H) * MAX_DEPTH_M
+MAX_REPLAY_ROWS = 1200
 
 
 class SideViewWidget(QWidget):
     drilling_sample = Signal(float, float, float, float, int)
+    replay_sample = Signal(dict, float)
     drilling_cycle_started = Signal()
 
     def __init__(self, parent=None) -> None:
@@ -130,6 +134,9 @@ class SideViewWidget(QWidget):
         self.last_completed_depth_m = 0.0
         self.region, self.layers = generate_rock_layers()
         self._geology_items: list = []
+        self._replay_rows = self._load_replay_rows()
+        self._replay_index = 0
+        self._last_replay_energy_type = ""
 
         self.setMinimumSize(780, 580)
         self._build_ui()
@@ -193,7 +200,7 @@ class SideViewWidget(QWidget):
             self._add_item(rect, Z_GEOLOGY)
             self._geology_items.append(rect)
 
-            lbl = pg.TextItem(f"{layer.name} | cluster {layer.cluster_id}", anchor=(0, 0.5), color="#dce6f1")
+            lbl = pg.TextItem(f"{layer.name} | {layer.energy_type}", anchor=(0, 0.5), color="#dce6f1")
             lbl.setPos(SECTION_LEFT + 8, y + h / 2)
             self._add_item(lbl, Z_GEOLOGY_LABEL)
             self._geology_items.append(lbl)
@@ -886,9 +893,17 @@ class SideViewWidget(QWidget):
         layer = self._current_layer()
         return layer.name if layer is not None else "Sandstone"
 
-    def _current_layer_cluster_id(self) -> int:
+    def _current_layer_energy_type(self) -> str:
         layer = self._current_layer()
-        return layer.cluster_id if layer is not None else 0
+        return layer.energy_type if layer is not None else "medium_low_energy"
+
+    def _current_layer_energy_type_id(self) -> int:
+        return ENERGY_TYPE_TO_ID.get(self._current_layer_energy_type(), 0)
+
+    def _current_replay_row(self) -> dict | None:
+        if not self._replay_rows:
+            return None
+        return self._replay_rows[self._replay_index % len(self._replay_rows)]
 
     def _current_drilling_speed(self) -> float:
         base_speed = ROCK_DRILL_SPEED_MPS.get(self._current_layer_name(), 0.012)
@@ -906,6 +921,8 @@ class SideViewWidget(QWidget):
             self.pulley_angle_rad = 0.0
             self.tool_spin_angle_rad = 0.0
             self.region, self.layers = generate_rock_layers()
+            self._replay_index = 0
+            self._last_replay_energy_type = ""
             self.region_text.setText(f"Region: {self.region}")
             self._clear_geology()
             self._draw_geology()
@@ -915,10 +932,17 @@ class SideViewWidget(QWidget):
 
         self._tick += 0.06
         self.elapsed_time_s += TIMER_INTERVAL_MS / 1000.0
-        self.rot_speed_rpm = ROT_SPEED_BASE_RPM + ROT_SPEED_SWING_RPM * math.cos(self._tick * 1.2)
+        replay_row = self._current_replay_row()
+        if replay_row is None:
+            self.rot_speed_rpm = ROT_SPEED_BASE_RPM + ROT_SPEED_SWING_RPM * math.cos(self._tick * 1.2)
+        else:
+            self.rot_speed_rpm = _to_float(replay_row.get("rotation"), ROT_SPEED_BASE_RPM)
         current_speed = 0.0
         if not self._is_retracting:
-            current_speed = self._current_drilling_speed()
+            if replay_row is None:
+                current_speed = self._current_drilling_speed()
+            else:
+                current_speed = max(_to_float(replay_row.get("speed"), 0.0), 0.001)
             depth_step = current_speed * DRILLING_SPEED_TO_DEPTH_STEP
             delta = 2 * math.pi * (self.rot_speed_rpm / 60.0) * (TIMER_INTERVAL_MS / 1000.0)
             self.pulley_angle_rad += delta
@@ -926,13 +950,20 @@ class SideViewWidget(QWidget):
             self.depth_m = min(self.depth_m + depth_step, self.target_depth_m)
             pipe_end_depth_m = max(self.depth_m - self._pipe_end_offset_m(), 0.0)
             self.hole_depth_m = max(self.hole_depth_m, pipe_end_depth_m)
-            self.drilling_sample.emit(
-                self.elapsed_time_s,
-                self.rot_speed_rpm,
-                current_speed,
-                self.depth_m,
-                self._current_layer_cluster_id(),
-            )
+            if replay_row is None:
+                self.drilling_sample.emit(
+                    self.elapsed_time_s,
+                    self.rot_speed_rpm,
+                    current_speed,
+                    self.depth_m,
+                    self._current_layer_energy_type_id(),
+                )
+            else:
+                replay_row = dict(replay_row)
+                replay_row["elapsed_time_s"] = self.elapsed_time_s
+                self.replay_sample.emit(replay_row, self.depth_m)
+                self._last_replay_energy_type = str(replay_row.get("rock_energy_type_final", ""))
+                self._replay_index += 1
         else:
             delta = 2 * math.pi * (self.rot_speed_rpm / 60.0) * (TIMER_INTERVAL_MS / 1000.0)
             self.pulley_angle_rad -= delta
@@ -957,7 +988,7 @@ class SideViewWidget(QWidget):
         self.total_depth_text.setText(f"Completed depth: {self.last_completed_depth_m:0.1f} m")
         self.target_depth_text.setText(f"Target depth: {self.target_depth_m:0.1f} m")
         self.layer_speed_text.setText(
-            f"Layer: {self._current_layer_name()} | cluster: {self._current_layer_cluster_id()} | "
+            f"Layer: {self._current_layer_name()} | energy: {self._current_energy_label()} | "
             f"speed: {self.current_drilling_speed_mps:0.3f} m/s"
         )
 
@@ -1042,3 +1073,52 @@ class SideViewWidget(QWidget):
         self.bit_cone_l.setRect(bx - 9 - roll, bit_y + 7, 6, BIT_CONE_H)
         self.bit_cone_m.setRect(bx - 3, bit_y + BIT_CONE_OFFSET_Y + abs(roll) * 0.4, 6, BIT_CONE_H)
         self.bit_cone_r.setRect(bx + 3 + roll, bit_y + 7, 6, BIT_CONE_H)
+
+    def _current_energy_label(self) -> str:
+        if self._last_replay_energy_type:
+            return self._last_replay_energy_type
+        return self._current_layer_energy_type()
+
+    def _load_replay_rows(self) -> list[dict]:
+        path = Path(__file__).resolve().parents[1] / "data" / "united_rock_energy_segment_quantile.csv"
+        if not path.exists():
+            return []
+
+        replay_rows: list[dict] = []
+        active_well_id = ""
+        with path.open("r", encoding="utf-8", newline="") as file:
+            reader = csv.DictReader(file)
+            for row in reader:
+                if not _is_valid_replay_row(row):
+                    continue
+                well_id = str(row.get("well_id", ""))
+                if not active_well_id:
+                    active_well_id = well_id
+                if well_id != active_well_id and replay_rows:
+                    break
+                replay_rows.append(row)
+                if len(replay_rows) >= MAX_REPLAY_ROWS:
+                    break
+
+        return replay_rows
+
+
+def _is_valid_replay_row(row: dict) -> bool:
+    required = (
+        "processing_time",
+        "well_id",
+        "pressure_axis",
+        "pressure_rotation",
+        "rotation",
+        "speed",
+        "hardness_score_smooth",
+        "rock_energy_type_final",
+    )
+    return all(row.get(column) not in (None, "") for column in required)
+
+
+def _to_float(value, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default

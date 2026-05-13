@@ -6,9 +6,11 @@ from .drilling_series import (
     build_default_transition_series,
     load_cluster_profiles,
 )
+from .advisory_engine import AdvisoryEngine
 
 __all__ = [
     "ClusterProfile",
+    "AdvisoryEngine",
     "DrillingPoint",
     "PerformancePoint",
     "build_dataset_emulator_series",

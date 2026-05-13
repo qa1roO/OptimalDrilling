@@ -132,7 +132,7 @@ class RockLayer:
     name: str
     thickness: float
     color_hex: str
-    cluster_id: int
+    energy_type: str
 ```
 
 Регионы:
@@ -143,10 +143,21 @@ Far East Volcanic
 Brazil Shield
 ```
 
-Каждый регион содержит набор пород. Для каждого слоя случайно задается толщина
-и случайный `cluster_id` из диапазона `0..6`.
+Каждый регион содержит набор пород. Для каждого слоя случайно задается толщина,
+а `energy_type` определяется по типу породы.
 
-`cluster_id` связывает визуальный слой с model-driven логикой графиков.
+Используемые energy sections:
+
+```text
+soft_low_energy
+medium_low_energy
+medium_high_energy
+hard_high_energy
+```
+
+Визуальная геология больше не генерирует старые случайные `cluster_id 0..6`.
+Эти id относятся к legacy kmeans-логике и не должны использоваться как основная
+классификация в replay/advisory режиме.
 
 ## Скорость бурения в сцене
 
@@ -198,7 +209,7 @@ time_s
 rotation
 speed
 depth_m
-cluster_id
+energy_type_id
 ```
 
 Emit находится в `_on_tick()`:
@@ -209,9 +220,13 @@ self.drilling_sample.emit(
     self.rot_speed_rpm,
     current_speed,
     self.depth_m,
-    self._current_layer_cluster_id(),
+    self._current_layer_energy_type_id(),
 )
 ```
+
+`energy_type_id` нужен только для совместимости старого fallback-потока
+`append_drilling_point`. Основной replay/advisory поток использует строковый
+`rock_energy_type_final`.
 
 При завершении цикла бурения и генерации новой геологии испускается:
 
@@ -264,16 +279,16 @@ plot.setXRange(0.0, self.depth_axis_max_m)
 Точка входа для данных:
 
 ```python
-append_drilling_point(time_s, rotation, speed, depth_m, cluster_id)
+append_drilling_point(time_s, rotation, speed, depth_m, energy_type_id)
 ```
 
-Если `cluster_id` изменился, запускается новый сегмент:
+В legacy fallback-режиме при смене `energy_type_id` запускается новый сегмент:
 
 ```python
 _start_layer_segment(...)
 ```
 
-Если кластер тот же, точка продолжает текущий сегмент.
+Если energy section та же, точка продолжает текущий сегмент.
 
 Live-точки хранятся в:
 
@@ -285,8 +300,8 @@ self._surface_segment_points
 
 ## Model-driven логика графиков
 
-График не просто рисует сырые значения из сцены. При получении `cluster_id` он
-берет профиль кластера:
+В legacy fallback-режиме график не просто рисует сырые значения из сцены. При
+получении числового `energy_type_id` он может использовать старый `ClusterProfile`:
 
 ```python
 load_cluster_profiles()
@@ -555,25 +570,156 @@ Performance Dashboard справа
 
 ```text
 rock_layer_generator_stub.py
-    -> создает слои с cluster_id
+    -> создает визуальные слои с energy_type
 
 SideViewWidget
     -> определяет текущий слой по depth_m
     -> считает current_speed, rotation, axial
     -> двигает бур и трубу
-    -> emit(time_s, rotation, speed, depth_m, cluster_id)
+    -> emit replay_sample(telemetry_row, depth_m) в replay/advisory mode
+    -> emit drilling_sample(..., energy_type_id) только в fallback mode
 
 Performance3DWidget
-    -> принимает live-сигнал
-    -> при смене cluster_id берет ClusterProfile
-    -> строит плавный переход к optimal_rotation / target_live_speed
-    -> обновляет 2D depth-графики и 3D поверхность
+    -> принимает replay/advisory telemetry
+    -> строит 2D depth-графики по фактическим rotation/speed
+    -> строит 3D ML future-speed surface
+    -> показывает current point, recommended point и uplift
 
 drilling_series.py
     -> читает датасеты
     -> грузит scaler/kmeans
     -> собирает avg/optimal профили кластеров
 ```
+
+## Replay / Advisory mode
+
+Текущий симулятор дополнен replay/advisory режимом. В этом режиме левая сцена
+использует историческую telemetry из:
+
+```text
+simulator/app/data/united_rock_energy_segment_quantile.csv
+```
+
+`SideViewWidget` читает первый валидный contiguous `well_id` из CSV и не
+сканирует весь файл целиком при старте. Это важно, потому что replay CSV большой.
+На каждом тике сцена берет следующую строку telemetry, двигает бур по фактической
+`speed`, показывает фактический `rotation` и отправляет в графики новый сигнал:
+
+```python
+replay_sample = Signal(dict, float)
+```
+
+Порядок данных:
+
+```text
+telemetry_row
+depth_m
+```
+
+Обычный synthetic-сигнал `drilling_sample` сохранен как fallback, если replay CSV
+недоступен.
+
+## AdvisoryEngine
+
+Новый data-layer находится в:
+
+```text
+simulator/app/data/advisory_engine.py
+```
+
+Основной класс:
+
+```python
+class AdvisoryEngine:
+    def update(self, telemetry_row: dict) -> dict | None:
+        ...
+
+    def get_recommendation(self) -> dict | None:
+        ...
+```
+
+Engine хранит rolling buffer telemetry, повторяет feature engineering из
+training pipeline, строит candidate grid по `pressure_axis` и
+`pressure_rotation`, затем использует две модели:
+
+```text
+rotation_model_near5.joblib
+speed_model_near5.joblib
+```
+
+После накопления минимум 30 telemetry points engine возвращает recommendation:
+
+```text
+energy_type
+current point
+recommended point
+predicted uplift
+future-speed surface
+optimizer score surface
+```
+
+Если данных меньше 30, UI показывает warming-up status.
+
+## Advisory artifacts
+
+Артефакты advisory-модели лежат внутри simulator:
+
+```text
+simulator/app/ml_artifacts/drilling_advisory_light_penalty_artifacts/
+    feature_config.json
+    optimizer_config.json
+    surface_ranges_by_energy_type.json
+    rotation_model_near5.joblib
+    speed_model_near5.joblib
+```
+
+Для загрузки этих моделей требуется `lightgbm`, поэтому он добавлен в:
+
+```text
+simulator/requirements.txt
+```
+
+Если `lightgbm` или артефакты отсутствуют, симулятор не должен падать: правая
+панель показывает статус, что advisory model unavailable.
+
+Даже когда advisory-модель недоступна или buffer еще прогревается, 3D-панель
+не остается пустой: она строит preview-плоскость текущего `energy_type` по
+диапазонам из `surface_ranges_by_energy_type.json` и показывает текущую
+операторскую точку. После появления полноценной ML-рекомендации preview
+заменяется ML future-speed surface.
+
+## Advisory 3D surface
+
+В advisory mode старая synthetic 3D surface заменяется ML-поверхностью:
+
+```text
+X = pressure_axis
+Y = pressure_rotation
+Z = predicted target_speed_near5
+```
+
+На 3D-графике отображаются:
+
+- ML future-speed surface;
+- текущая точка оператора;
+- рекомендованная точка;
+- линия от текущей точки к рекомендованной;
+- predicted uplift percent в status label.
+
+В warm-up/fallback состоянии отображаются:
+
+- preview-плоскость текущего `energy_type`;
+- текущая точка оператора, которая обновляется по мере бурения.
+
+2D-графики в этом режиме показывают фактические replay значения:
+
+```text
+Rotation by depth -> фактический rotation из CSV
+Speed by depth    -> фактический speed из CSV
+```
+
+Красные target-lines на 2D-графиках показывают текущие recommended
+`predicted_target_rotation` и `predicted_target_speed`.
 
 ## Ограничения при изменениях
 

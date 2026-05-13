@@ -58,6 +58,7 @@ class SimulatorMainWindow(QMainWindow):
         self.side_view = SideViewWidget()
         self.performance_chart = Performance3DWidget()
         self.side_view.drilling_sample.connect(self.performance_chart.append_drilling_point)
+        self.side_view.replay_sample.connect(self.performance_chart.append_advisory_telemetry)
         self.side_view.drilling_cycle_started.connect(self.performance_chart.on_drilling_cycle_started)
 
         root_layout.addWidget(self._panel("Rig Side View", self.side_view, badge="LIVE"), 1)
