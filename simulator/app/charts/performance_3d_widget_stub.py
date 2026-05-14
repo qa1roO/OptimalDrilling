@@ -36,6 +36,9 @@ class Performance3DWidget(QWidget):
         self._plot_items: list = []
         self._surface_items: list = []
         self._marker_items: list = []
+        self._advisory_current_marker = None
+        self._advisory_recommended_marker = None
+        self._advisory_link_item = None
         self._live_points: list[DrillingPoint] = []
         self._live_depths_m: list[float] = []
         self._surface_segment_points: list[DrillingPoint] = []
@@ -77,6 +80,11 @@ class Performance3DWidget(QWidget):
         self._advisory_surface_ranges: dict[str, dict[str, float]] = {}
         self._speed_smoothing_window = 35
         self._rotation_smoothing_window = 9
+        self._chart_update_index = 0
+        self._chart_update_stride = 3
+        self._advisory_update_index = 0
+        self._advisory_update_stride = 10
+        self._last_advisory_compute_energy_type: str | None = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -128,6 +136,9 @@ class Performance3DWidget(QWidget):
         self._cached_surface_by_energy_type.clear()
         self._advisory_surface_bounds.clear()
         self._advisory_surface_scene.clear()
+        self._chart_update_index = 0
+        self._advisory_update_index = 0
+        self._last_advisory_compute_energy_type = None
         if self._advisory_engine is not None:
             self._advisory_engine.reset()
         self._graph_start_time_s = None
@@ -227,7 +238,8 @@ class Performance3DWidget(QWidget):
             )
             return
 
-        recommendation = self._advisory_engine.update(telemetry_row)
+        should_compute = self._should_compute_advisory(str(telemetry_row.get("rock_energy_type_final", "")))
+        recommendation = self._advisory_engine.update(telemetry_row, compute=should_compute)
         if recommendation is None:
             energy_type = str(telemetry_row.get("rock_energy_type_final", "unknown"))
             self._draw_advisory_preview_surface_if_needed(telemetry_row)
@@ -241,6 +253,9 @@ class Performance3DWidget(QWidget):
                 f"energy={energy_type}, depth={depth_m:0.1f}m | Surface: {surface_status}."
             )
             return
+        if not should_compute:
+            return
+        self._last_advisory_compute_energy_type = str(recommendation["energy_type"])
 
         energy_type = str(recommendation["energy_type"])
         self._set_advisory_targets(recommendation)
@@ -449,6 +464,10 @@ class Performance3DWidget(QWidget):
             self.speed_target_line.hide()
 
     def _update_live_views(self, depth_m: float) -> None:
+        self._chart_update_index += 1
+        if self._chart_update_index % self._chart_update_stride and len(self._live_points) > 1:
+            return
+
         first_depth = self._graph_start_depth_m
         if first_depth is None and self._live_depths_m:
             first_depth = self._live_depths_m[0]
@@ -524,6 +543,18 @@ class Performance3DWidget(QWidget):
         self.speed_target_line.setValue(recommended["predicted_target_speed"])
         self.speed_target_line.show()
 
+    def _should_compute_advisory(self, energy_type: str) -> bool:
+        self._advisory_update_index += 1
+        if self._advisory_engine is None:
+            return False
+        if len(self._advisory_engine.rows) + 1 <= self._advisory_engine.min_buffer_size:
+            return True
+        if self._advisory_engine.get_recommendation() is None:
+            return True
+        if energy_type != self._last_advisory_compute_energy_type:
+            return True
+        return self._advisory_update_index % self._advisory_update_stride == 0
+
     def _get_surface_for_energy_type(self, energy_type: str, recommendation: dict) -> dict:
         if energy_type in self._cached_surface_by_energy_type:
             return self._cached_surface_by_energy_type[energy_type]
@@ -578,32 +609,48 @@ class Performance3DWidget(QWidget):
     def _update_advisory_markers(self, recommendation: dict) -> None:
         if not self._advisory_surface_bounds:
             return
-        self._clear_marker_items()
         current_pos = self._advisory_point_to_scene(recommendation["current"], "predicted_target_speed")
         recommended_pos = self._advisory_point_to_scene(recommendation["recommended"], "predicted_target_speed")
-        current_marker = gl.GLScatterPlotItem(
-            pos=np.asarray([current_pos], dtype=float),
-            color=(0.95, 0.95, 0.95, 1.0),
-            size=11,
-            pxMode=True,
-        )
-        recommended_marker = gl.GLScatterPlotItem(
-            pos=np.asarray([recommended_pos], dtype=float),
-            color=(1.0, 0.12, 0.08, 1.0),
-            size=14,
-            pxMode=True,
-        )
-        link = gl.GLLinePlotItem(
-            pos=np.asarray([current_pos, recommended_pos], dtype=float),
-            color=(1.0, 1.0, 1.0, 0.95),
-            width=3,
-            antialias=True,
-            mode="line_strip",
-        )
-        self.surface_view.addItem(current_marker)
-        self.surface_view.addItem(recommended_marker)
-        self.surface_view.addItem(link)
-        self._marker_items.extend([current_marker, recommended_marker, link])
+        current_array = np.asarray([current_pos], dtype=float)
+        recommended_array = np.asarray([recommended_pos], dtype=float)
+        link_array = np.asarray([current_pos, recommended_pos], dtype=float)
+
+        if self._advisory_current_marker is None:
+            self._advisory_current_marker = gl.GLScatterPlotItem(
+                pos=current_array,
+                color=(0.95, 0.95, 0.95, 1.0),
+                size=11,
+                pxMode=True,
+            )
+            self.surface_view.addItem(self._advisory_current_marker)
+            self._marker_items.append(self._advisory_current_marker)
+        else:
+            self._advisory_current_marker.setData(pos=current_array)
+
+        if self._advisory_recommended_marker is None:
+            self._advisory_recommended_marker = gl.GLScatterPlotItem(
+                pos=recommended_array,
+                color=(1.0, 0.12, 0.08, 1.0),
+                size=14,
+                pxMode=True,
+            )
+            self.surface_view.addItem(self._advisory_recommended_marker)
+            self._marker_items.append(self._advisory_recommended_marker)
+        else:
+            self._advisory_recommended_marker.setData(pos=recommended_array)
+
+        if self._advisory_link_item is None:
+            self._advisory_link_item = gl.GLLinePlotItem(
+                pos=link_array,
+                color=(1.0, 1.0, 1.0, 0.95),
+                width=3,
+                antialias=True,
+                mode="line_strip",
+            )
+            self.surface_view.addItem(self._advisory_link_item)
+            self._marker_items.append(self._advisory_link_item)
+        else:
+            self._advisory_link_item.setData(pos=link_array)
 
     def _draw_advisory_preview_surface_if_needed(self, telemetry_row: dict) -> None:
         energy_type = str(telemetry_row.get("rock_energy_type_final", "unknown"))
@@ -675,7 +722,8 @@ class Performance3DWidget(QWidget):
     def _update_advisory_preview_marker(self, telemetry_row: dict) -> None:
         if not self._advisory_surface_bounds:
             return
-        self._clear_marker_items()
+        if self._advisory_recommended_marker is not None or self._advisory_link_item is not None:
+            self._clear_marker_items()
         p_ax = _to_float(telemetry_row.get("pressure_axis"))
         p_rot = _to_float(telemetry_row.get("pressure_rotation"))
         speed = _to_float(telemetry_row.get("speed"))
@@ -685,14 +733,18 @@ class Performance3DWidget(QWidget):
             "pressure_rotation": p_rot,
             "speed": speed,
         }
-        current_marker = gl.GLScatterPlotItem(
-            pos=np.asarray([self._advisory_point_to_scene(current_point, "speed")], dtype=float),
-            color=(0.95, 0.95, 0.95, 1.0),
-            size=12,
-            pxMode=True,
-        )
-        self.surface_view.addItem(current_marker)
-        self._marker_items.append(current_marker)
+        current_array = np.asarray([self._advisory_point_to_scene(current_point, "speed")], dtype=float)
+        if self._advisory_current_marker is None:
+            self._advisory_current_marker = gl.GLScatterPlotItem(
+                pos=current_array,
+                color=(0.95, 0.95, 0.95, 1.0),
+                size=12,
+                pxMode=True,
+            )
+            self.surface_view.addItem(self._advisory_current_marker)
+            self._marker_items.append(self._advisory_current_marker)
+        else:
+            self._advisory_current_marker.setData(pos=current_array)
 
     def _surface_ranges_for_energy(
         self,
@@ -831,16 +883,22 @@ class Performance3DWidget(QWidget):
         for item in self._marker_items:
             self.surface_view.removeItem(item)
         self._marker_items.clear()
+        self._advisory_current_marker = None
+        self._advisory_recommended_marker = None
+        self._advisory_link_item = None
 
     def _rolling_mean(self, values, window: int) -> np.ndarray:
         array = np.asarray(values, dtype=float)
         if len(array) < 2 or window <= 1:
             return array
-        smoothed = np.empty_like(array, dtype=float)
-        for index in range(len(array)):
-            start = max(0, index - window + 1)
-            smoothed[index] = float(np.nanmean(array[start : index + 1]))
-        return smoothed
+        finite = np.isfinite(array)
+        safe = np.where(finite, array, 0.0)
+        counts = np.cumsum(finite.astype(float))
+        totals = np.cumsum(safe)
+        if len(array) > window:
+            counts[window:] = counts[window:] - counts[:-window]
+            totals[window:] = totals[window:] - totals[:-window]
+        return totals / np.maximum(counts, 1.0)
 
     def _clip_series(
         self,

@@ -68,7 +68,7 @@ class AdvisoryEngine:
         self.boundary_penalty_weight = float(self.optimizer_config.get("boundary_penalty_weight", 0.020))
         self.boundary_start = float(self.optimizer_config.get("boundary_start", 0.85))
 
-    def update(self, telemetry_row: dict[str, Any]) -> dict[str, Any] | None:
+    def update(self, telemetry_row: dict[str, Any], compute: bool = True) -> dict[str, Any] | None:
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=PerformanceWarning)
             warnings.filterwarnings("ignore", message="X does not have valid feature names.*")
@@ -76,6 +76,8 @@ class AdvisoryEngine:
             if len(self.rows) < self.min_buffer_size:
                 self._last_recommendation = None
                 return None
+            if not compute and self._last_recommendation is not None:
+                return self._last_recommendation
 
             features = self._build_feature_frame()
             current = features.iloc[-1].copy()

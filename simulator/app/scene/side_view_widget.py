@@ -110,6 +110,7 @@ Z_OVERLAY = 40.0
 BIT_TIP_OFFSET_Y = BIT_CONE_OFFSET_Y + BIT_CONE_H
 PIPE_END_OFFSET_M = (BIT_TIP_OFFSET_Y / SECTION_H) * MAX_DEPTH_M
 MAX_REPLAY_ROWS = 1200
+MAX_REPLAY_WELLS = 64
 MIN_ROWS_PER_LAYER = 30
 REPLAY_DEPTH_COLUMNS = ("depth_m", "depth")
 
@@ -1255,6 +1256,8 @@ class SideViewWidget(QWidget):
                 well_id = str(row.get("well_id", ""))
                 if not well_id:
                     continue
+                if well_id not in rows_by_well and len(rows_by_well) >= MAX_REPLAY_WELLS:
+                    break
                 well_rows = rows_by_well.setdefault(well_id, [])
                 if len(well_rows) < MAX_REPLAY_ROWS:
                     well_rows.append(row)
