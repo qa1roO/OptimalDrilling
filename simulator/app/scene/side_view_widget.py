@@ -891,7 +891,11 @@ class SideViewWidget(QWidget):
     # ------------------------------------------------------------------ Кинематика
 
     def _depth_to_section_y(self, depth_m: float) -> float:
-        return SECTION_TOP + SECTION_H * min(depth_m / MAX_DEPTH_M, 1.0)
+        axis_limit_m = self._depth_axis_limit_m()
+        return SECTION_TOP + SECTION_H * min(depth_m / axis_limit_m, 1.0)
+
+    def _depth_axis_limit_m(self) -> float:
+        return max(self.target_depth_m, MAX_DEPTH_M, 1.0)
 
     def _pipe_end_offset_m(self) -> float:
         return PIPE_END_OFFSET_M
@@ -905,7 +909,7 @@ class SideViewWidget(QWidget):
         return self._bit_y() + BIT_TIP_OFFSET_Y
 
     def _car_y(self) -> float:
-        t = min(self.depth_m / MAX_DEPTH_M, 1.0)
+        t = min(self.depth_m / self._depth_axis_limit_m(), 1.0)
         return CARRIAGE_TOP_Y + (CARRIAGE_BOT_Y - CARRIAGE_TOP_Y) * t
 
     def _current_layer(self):
@@ -979,14 +983,14 @@ class SideViewWidget(QWidget):
                 current_speed = self._current_drilling_speed()
             else:
                 current_speed = max(_to_float(replay_row.get("speed"), 0.0), 0.001)
-            depth_step = current_speed * DRILLING_SPEED_TO_DEPTH_STEP
-            if replay_row is not None and self._replay_depth_column is None:
-                depth_step *= self._replay_depth_scale
             delta = 2 * math.pi * (self.rot_speed_rpm / 60.0) * (TIMER_INTERVAL_MS / 1000.0)
             self.pulley_angle_rad += delta
             self.tool_spin_angle_rad += delta
             replay_depth = self._replay_depth_for_row(replay_row) if replay_row is not None else None
             if replay_depth is None:
+                depth_step = current_speed * DRILLING_SPEED_TO_DEPTH_STEP
+                if replay_row is not None:
+                    depth_step *= self._replay_depth_scale
                 self.depth_m = min(self.depth_m + depth_step, self.target_depth_m)
             else:
                 self.depth_m = min(replay_depth, self.target_depth_m)
@@ -1140,7 +1144,7 @@ class SideViewWidget(QWidget):
         raw_depth_span = self._raw_replay_depth_span()
         self.target_depth_m = self._target_depth_from_replay_rows(raw_depth_span)
         self._replay_depth_scale = 1.0
-        if raw_depth_span > 1e-9:
+        if self._replay_depth_column is None and raw_depth_span > 1e-9:
             self._replay_depth_scale = self.target_depth_m / raw_depth_span
 
         self.region = f"Replay well {well_id}"
@@ -1205,24 +1209,30 @@ class SideViewWidget(QWidget):
                 for row in self._replay_rows[start : end + 1]
             )
 
-        start_depth = _to_float(self._replay_rows[start].get(self._replay_depth_column), 0.0)
+        if start <= 0:
+            start_depth = 0.0
+        else:
+            start_depth = _to_float(self._replay_rows[start - 1].get(self._replay_depth_column), 0.0)
         end_depth = _to_float(self._replay_rows[end].get(self._replay_depth_column), start_depth)
-        return max((end_depth - start_depth) * self._replay_depth_scale, 1.0)
+        return max(end_depth - start_depth, 1.0)
 
     def _target_depth_from_replay_rows(self, raw_depth_span: float) -> float:
         if not self._replay_rows:
             return random.uniform(MIN_DEPTH_M, MAX_DEPTH_M)
         if raw_depth_span <= 0:
             return random.uniform(MIN_DEPTH_M, MAX_DEPTH_M)
+        if self._replay_depth_column:
+            return raw_depth_span
         return min(max(raw_depth_span, MIN_DEPTH_M), MAX_DEPTH_M)
 
     def _raw_replay_depth_span(self) -> float:
         if not self._replay_rows:
             return 0.0
         if self._replay_depth_column:
-            first = _to_float(self._replay_rows[0].get(self._replay_depth_column), 0.0)
-            last = _to_float(self._replay_rows[-1].get(self._replay_depth_column), first)
-            return max(last - first, 0.0)
+            return max(
+                _to_float(row.get(self._replay_depth_column), 0.0)
+                for row in self._replay_rows
+            )
         return sum(
             max(_to_float(row.get("speed"), 0.0), 0.001) * DRILLING_SPEED_TO_DEPTH_STEP
             for row in self._replay_rows
@@ -1231,14 +1241,13 @@ class SideViewWidget(QWidget):
     def _replay_depth_for_row(self, row: dict) -> float | None:
         if not self._replay_depth_column:
             return None
-        raw_depth = max(_to_float(row.get(self._replay_depth_column), self._replay_depth_start) - self._replay_depth_start, 0.0)
-        return raw_depth * self._replay_depth_scale
+        return max(_to_float(row.get(self._replay_depth_column), self.depth_m), 0.0)
 
     def _detect_replay_depth_column(self, rows: list[dict]) -> str | None:
         if not rows:
             return None
         for column in REPLAY_DEPTH_COLUMNS:
-            if rows[0].get(column) not in (None, ""):
+            if any(row.get(column) not in (None, "") for row in rows):
                 return column
         return None
 
@@ -1247,9 +1256,12 @@ class SideViewWidget(QWidget):
         if not path.exists():
             return {}
 
+        depth_lookup: dict[tuple[str, str], str] = {}
         rows_by_well: dict[str, list[dict]] = {}
         with path.open("r", encoding="utf-8", newline="") as file:
             reader = csv.DictReader(file)
+            if reader.fieldnames and not any(column in reader.fieldnames for column in REPLAY_DEPTH_COLUMNS):
+                depth_lookup = _load_replay_depth_lookup()
             for row in reader:
                 if not _is_valid_replay_row(row):
                     continue
@@ -1258,6 +1270,10 @@ class SideViewWidget(QWidget):
                     continue
                 if well_id not in rows_by_well and len(rows_by_well) >= MAX_REPLAY_WELLS:
                     break
+                if not any(row.get(column) not in (None, "") for column in REPLAY_DEPTH_COLUMNS):
+                    depth = depth_lookup.get((well_id, str(row.get("processing_time", ""))))
+                    if depth not in (None, ""):
+                        row["depth"] = depth
                 well_rows = rows_by_well.setdefault(well_id, [])
                 if len(well_rows) < MAX_REPLAY_ROWS:
                     well_rows.append(row)
@@ -1277,6 +1293,26 @@ def _is_valid_replay_row(row: dict) -> bool:
         "rock_energy_type_final",
     )
     return all(row.get(column) not in (None, "") for column in required)
+
+
+def _load_replay_depth_lookup() -> dict[tuple[str, str], str]:
+    path = Path(__file__).resolve().parents[3] / "datasets" / "united.csv"
+    if not path.exists():
+        return {}
+
+    lookup: dict[tuple[str, str], str] = {}
+    with path.open("r", encoding="utf-8", newline="") as file:
+        reader = csv.DictReader(file)
+        if not reader.fieldnames or not any(column in reader.fieldnames for column in REPLAY_DEPTH_COLUMNS):
+            return lookup
+        depth_column = "depth_m" if "depth_m" in reader.fieldnames else "depth"
+        for row in reader:
+            well_id = str(row.get("well_id", ""))
+            processing_time = str(row.get("processing_time", ""))
+            depth = row.get(depth_column)
+            if well_id and processing_time and depth not in (None, ""):
+                lookup[(well_id, processing_time)] = str(depth)
+    return lookup
 
 
 def _to_float(value, default: float = 0.0) -> float:

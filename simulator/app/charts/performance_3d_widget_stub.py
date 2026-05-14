@@ -213,6 +213,7 @@ class Performance3DWidget(QWidget):
             self.reset_live_mode()
             self._mode = "advisory"
 
+        depth_m = self._telemetry_depth_m(telemetry_row, depth_m)
         if self._graph_start_depth_m is None:
             self._graph_start_depth_m = depth_m
 
@@ -474,7 +475,10 @@ class Performance3DWidget(QWidget):
         if first_depth is None:
             return
 
-        xs = [depth - first_depth for depth in self._live_depths_m]
+        if self._mode == "advisory":
+            xs = list(self._live_depths_m)
+        else:
+            xs = [depth - first_depth for depth in self._live_depths_m]
         rotations = [point.rotation for point in self._live_points]
         speeds = [point.speed for point in self._live_points]
         self.rotation_curve.setData(
@@ -513,8 +517,9 @@ class Performance3DWidget(QWidget):
             self.surface_view.addItem(scatter)
             self._plot_items.extend([line, scatter])
 
-        self.rotation_plot.setXRange(0.0, self.depth_axis_max_m, padding=0)
-        self.speed_plot.setXRange(0.0, self.depth_axis_max_m, padding=0)
+        x_max = max(self.depth_axis_max_m, max(xs, default=0.0) * 1.05)
+        self.rotation_plot.setXRange(0.0, x_max, padding=0)
+        self.speed_plot.setXRange(0.0, x_max, padding=0)
 
     def _init_advisory_engine(self) -> None:
         artifact_dir = (
@@ -542,6 +547,16 @@ class Performance3DWidget(QWidget):
         self.rotation_target_line.show()
         self.speed_target_line.setValue(recommended["predicted_target_speed"])
         self.speed_target_line.show()
+
+    def _telemetry_depth_m(self, telemetry_row: dict, fallback_depth_m: float) -> float:
+        for column in ("depth_m", "depth"):
+            value = telemetry_row.get(column)
+            if value in (None, ""):
+                continue
+            depth_m = _to_float(value, fallback_depth_m)
+            if depth_m >= 0:
+                return depth_m
+        return fallback_depth_m
 
     def _should_compute_advisory(self, energy_type: str) -> bool:
         self._advisory_update_index += 1
