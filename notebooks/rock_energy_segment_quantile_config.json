@@ -34,6 +34,7 @@
     "rotation_efficiency",
     "energy_input_proxy"
   ],
+  "depth_column": "depth_m",
   "residual_model_metrics": {
     "mae": 0.004749562337001684,
     "rmse": 0.006027965208514162,

@@ -1,4 +1,5 @@
 import json
+import math
 from pathlib import Path
 
 from PySide6.QtCore import Qt
@@ -80,6 +81,7 @@ class Performance3DWidget(QWidget):
         self._advisory_surface_ranges: dict[str, dict[str, float]] = {}
         self._speed_smoothing_window = 35
         self._rotation_smoothing_window = 9
+        self._depth_bin_size_m = 0.2
         self._chart_update_index = 0
         self._chart_update_stride = 3
         self._advisory_update_index = 0
@@ -476,22 +478,34 @@ class Performance3DWidget(QWidget):
             return
 
         if self._mode == "advisory":
-            xs = list(self._live_depths_m)
+            xs = np.asarray(self._live_depths_m, dtype=float)
         else:
-            xs = [depth - first_depth for depth in self._live_depths_m]
-        rotations = [point.rotation for point in self._live_points]
-        speeds = [point.speed for point in self._live_points]
-        self.rotation_curve.setData(
+            xs = np.asarray([depth - first_depth for depth in self._live_depths_m], dtype=float)
+        rotations = np.asarray([point.rotation for point in self._live_points], dtype=float)
+        speeds = np.asarray([point.speed for point in self._live_points], dtype=float)
+        clipped_rotations = self._clip_series(rotations, low_quantile=0.02, high_quantile=0.98)
+        clipped_speeds = self._clip_series(speeds, low_quantile=0.03, high_quantile=0.97)
+        rotation_x, binned_rotations = self._depth_binned_curve(
             xs,
+            clipped_rotations,
+            bin_size=self._depth_bin_size_m,
+        )
+        speed_x, binned_speeds = self._depth_binned_curve(
+            xs,
+            clipped_speeds,
+            bin_size=self._depth_bin_size_m,
+        )
+        self.rotation_curve.setData(
+            rotation_x,
             self._rolling_mean(
-                self._clip_series(rotations, low_quantile=0.02, high_quantile=0.98),
+                binned_rotations,
                 self._rotation_smoothing_window,
             ),
         )
         self.speed_curve.setData(
-            xs,
+            speed_x,
             self._rolling_mean(
-                self._clip_series(speeds, low_quantile=0.03, high_quantile=0.97),
+                binned_speeds,
                 self._speed_smoothing_window,
             ),
         )
@@ -517,7 +531,10 @@ class Performance3DWidget(QWidget):
             self.surface_view.addItem(scatter)
             self._plot_items.extend([line, scatter])
 
-        x_max = max(self.depth_axis_max_m, max(xs, default=0.0) * 1.05)
+        visible_x = np.concatenate([rotation_x, speed_x]) if len(rotation_x) or len(speed_x) else xs
+        x_max = max(self.depth_axis_max_m, float(np.nanmax(visible_x)) * 1.05 if len(visible_x) else 0.0)
+        self.rotation_plot.setLimits(xMin=0.0, xMax=x_max)
+        self.speed_plot.setLimits(xMin=0.0, xMax=x_max)
         self.rotation_plot.setXRange(0.0, x_max, padding=0)
         self.speed_plot.setXRange(0.0, x_max, padding=0)
 
@@ -549,14 +566,20 @@ class Performance3DWidget(QWidget):
         self.speed_target_line.show()
 
     def _telemetry_depth_m(self, telemetry_row: dict, fallback_depth_m: float) -> float:
+        try:
+            if fallback_depth_m is not None and math.isfinite(float(fallback_depth_m)):
+                return float(fallback_depth_m)
+        except (TypeError, ValueError):
+            pass
+
         for column in ("depth_m", "depth"):
             value = telemetry_row.get(column)
             if value in (None, ""):
                 continue
-            depth_m = _to_float(value, fallback_depth_m)
-            if depth_m >= 0:
+            depth_m = _to_float(value, math.nan)
+            if math.isfinite(depth_m) and depth_m >= 0:
                 return depth_m
-        return fallback_depth_m
+        return 0.0
 
     def _should_compute_advisory(self, energy_type: str) -> bool:
         self._advisory_update_index += 1
@@ -930,6 +953,32 @@ class Performance3DWidget(QWidget):
         if low >= high:
             return array
         return np.clip(array, low, high)
+
+    def _depth_binned_curve(
+        self,
+        depths,
+        values,
+        bin_size: float = 0.2,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        depths = np.asarray(depths, dtype=float)
+        values = np.asarray(values, dtype=float)
+        mask = np.isfinite(depths) & np.isfinite(values)
+        depths = depths[mask]
+        values = values[mask]
+        if len(depths) < 2 or bin_size <= 0:
+            return depths, values
+
+        bins = np.floor(depths / bin_size) * bin_size
+        unique_bins = np.unique(bins)
+        xs: list[float] = []
+        ys: list[float] = []
+        for depth_bin in unique_bins:
+            part = values[bins == depth_bin]
+            if len(part) == 0:
+                continue
+            xs.append(float(depth_bin + bin_size / 2.0))
+            ys.append(float(np.nanmedian(part)))
+        return np.asarray(xs, dtype=float), np.asarray(ys, dtype=float)
 
     def _surface_status_name(self, source: str | None) -> str:
         if source == "notebook_plotly_surface":
