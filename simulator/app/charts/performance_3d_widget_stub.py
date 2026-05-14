@@ -1,3 +1,4 @@
+import csv
 import json
 import math
 from pathlib import Path
@@ -33,7 +34,9 @@ class Performance3DWidget(QWidget):
         self.surface_size_x = 170.0
         self.surface_size_y = 120.0
         self.surface_height = 42.0
-        self.depth_axis_max_m = 42.0
+        self.depth_axis_max_m = 40.0
+        self._rotation_axis_range = (45.0, 145.0)
+        self._speed_axis_range = (0.0, 0.045)
         self._plot_items: list = []
         self._surface_items: list = []
         self._marker_items: list = []
@@ -87,6 +90,7 @@ class Performance3DWidget(QWidget):
         self._advisory_update_index = 0
         self._advisory_update_stride = 10
         self._last_advisory_compute_energy_type: str | None = None
+        self._load_fixed_chart_ranges()
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -149,11 +153,10 @@ class Performance3DWidget(QWidget):
         self._clear_surface_items()
         self._clear_marker_items()
         self.rotation_curve.setData([], [])
-        self.rotation_plot.setXRange(0.0, self.depth_axis_max_m, padding=0)
+        self._apply_fixed_chart_ranges()
         self.rotation_target_line.setValue(0)
         self.rotation_target_line.hide()
         self.speed_curve.setData([], [])
-        self.speed_plot.setXRange(0.0, self.depth_axis_max_m, padding=0)
         self.speed_target_line.setValue(0)
         self.speed_target_line.hide()
         self.status_label.setText(
@@ -338,6 +341,8 @@ class Performance3DWidget(QWidget):
         plot.showGrid(x=True, y=True, alpha=0.22)
         plot.hideButtons()
         plot.setXRange(0.0, self.depth_axis_max_m, padding=0)
+        plot.enableAutoRange(axis=pg.ViewBox.XYAxes, enable=False)
+        plot.setMouseEnabled(x=False, y=False)
         plot.setLimits(xMin=0.0, xMax=self.depth_axis_max_m)
         plot.getAxis("bottom").setPen(pg.mkPen("#5f7082"))
         plot.getAxis("left").setPen(pg.mkPen("#5f7082"))
@@ -349,23 +354,9 @@ class Performance3DWidget(QWidget):
         view.opts["elevation"] = 27
         view.opts["azimuth"] = -44
         view.setBackgroundColor((12, 16, 22, 255))
-
-        axis = gl.GLAxisItem()
-        axis.setSize(x=self.surface_size_x, y=self.surface_size_y, z=self.surface_height)
-        view.addItem(axis)
-
-        grid = gl.GLGridItem()
-        grid.setColor((80, 92, 108, 80))
-        grid.setSize(x=self.surface_size_x, y=self.surface_size_y)
-        grid.setSpacing(x=20, y=15)
-        view.addItem(grid)
-
-        self._add_text_item(view, "pressure axis", (self.surface_size_x / 2 + 10, -8, 0))
-        self._add_text_item(view, "pressure rotation", (-12, self.surface_size_y / 2 + 12, 0))
-        self._add_text_item(view, "speed", (-10, -10, self.surface_height + 8))
         return view
 
-    def _add_text_item(self, view, text: str, pos: tuple[float, float, float]) -> None:
+    def _add_text_item(self, view, text: str, pos: tuple[float, float, float]):
         item = gl.GLTextItem(
             pos=pos,
             text=text,
@@ -374,6 +365,7 @@ class Performance3DWidget(QWidget):
             alignment=Qt.AlignLeft | Qt.AlignBottom,
         )
         view.addItem(item)
+        return item
 
     def _start_layer_segment(
         self,
@@ -428,10 +420,13 @@ class Performance3DWidget(QWidget):
             y=y,
             z=z,
             shader="shaded",
-            color=(0.18, 0.42, 0.62, 0.72),
+            colors=self._surface_heatmap_colors(z),
+            glOptions="translucent",
         )
         self.surface_view.addItem(surface)
         self._surface_items.append(surface)
+        self._add_surface_guides(x, y, z)
+        self._add_surface_peak_marker(x, y, z, z)
 
         self._add_target_marker()
 
@@ -451,7 +446,9 @@ class Performance3DWidget(QWidget):
             color=(1.0, 0.10, 0.08, 1.0),
             size=14,
             pxMode=True,
+            glOptions="additive",
         )
+        self._make_overlay_item(marker, depth=80)
         self.surface_view.addItem(marker)
         self._surface_items.append(marker)
 
@@ -483,8 +480,8 @@ class Performance3DWidget(QWidget):
             xs = np.asarray([depth - first_depth for depth in self._live_depths_m], dtype=float)
         rotations = np.asarray([point.rotation for point in self._live_points], dtype=float)
         speeds = np.asarray([point.speed for point in self._live_points], dtype=float)
-        clipped_rotations = self._clip_series(rotations, low_quantile=0.02, high_quantile=0.98)
-        clipped_speeds = self._clip_series(speeds, low_quantile=0.03, high_quantile=0.97)
+        clipped_rotations = self._clip_to_range(rotations, self._rotation_axis_range)
+        clipped_speeds = self._clip_to_range(speeds, self._speed_axis_range)
         rotation_x, binned_rotations = self._depth_binned_curve(
             xs,
             clipped_rotations,
@@ -520,13 +517,17 @@ class Performance3DWidget(QWidget):
                 width=4,
                 antialias=True,
                 mode="line_strip",
+                glOptions="additive",
             )
             scatter = gl.GLScatterPlotItem(
                 pos=data,
                 color=color,
                 size=6,
                 pxMode=True,
+                glOptions="additive",
             )
+            self._make_overlay_item(line, depth=70)
+            self._make_overlay_item(scatter, depth=71)
             self.surface_view.addItem(line)
             self.surface_view.addItem(scatter)
             self._plot_items.extend([line, scatter])
@@ -535,8 +536,7 @@ class Performance3DWidget(QWidget):
         x_max = max(self.depth_axis_max_m, float(np.nanmax(visible_x)) * 1.05 if len(visible_x) else 0.0)
         self.rotation_plot.setLimits(xMin=0.0, xMax=x_max)
         self.speed_plot.setLimits(xMin=0.0, xMax=x_max)
-        self.rotation_plot.setXRange(0.0, x_max, padding=0)
-        self.speed_plot.setXRange(0.0, x_max, padding=0)
+        self._apply_fixed_chart_ranges()
 
     def _init_advisory_engine(self) -> None:
         artifact_dir = (
@@ -557,6 +557,62 @@ class Performance3DWidget(QWidget):
         except Exception as exc:
             self._advisory_engine = None
             self._advisory_error = f"{type(exc).__name__}: {exc}"
+
+    def _load_fixed_chart_ranges(self) -> None:
+        path = _replay_csv_path()
+        if not path.exists():
+            return
+
+        rotations: list[float] = []
+        speeds: list[float] = []
+        depths_by_well: dict[str, list[float]] = {}
+        with path.open("r", encoding="utf-8", newline="") as file:
+            reader = csv.DictReader(file)
+            for row in reader:
+                rotation = _to_float(row.get("rotation"), math.nan)
+                speed = _to_float(row.get("speed"), math.nan)
+                if math.isfinite(rotation):
+                    rotations.append(rotation)
+                if math.isfinite(speed):
+                    speeds.append(speed)
+
+                depth = _to_float(row.get("depth_m", row.get("depth")), math.nan)
+                well_id = str(row.get("well_id", ""))
+                if well_id and math.isfinite(depth):
+                    depths_by_well.setdefault(well_id, []).append(depth)
+
+        if rotations:
+            self._rotation_axis_range = _padded_range(min(rotations), max(rotations), min_padding=5.0)
+        if speeds:
+            speed_min, speed_max = _padded_range(min(speeds), max(speeds), min_padding=0.002)
+            self._speed_axis_range = (max(speed_min, 0.0), speed_max)
+
+        print(
+            "Fixed chart ranges:",
+            f"depth=[0.0,{self.depth_axis_max_m:0.2f}]",
+            f"rotation=[{self._rotation_axis_range[0]:0.2f},{self._rotation_axis_range[1]:0.2f}]",
+            f"speed=[{self._speed_axis_range[0]:0.5f},{self._speed_axis_range[1]:0.5f}]",
+        )
+
+    def _apply_fixed_chart_ranges(self) -> None:
+        if not CHARTS_READY:
+            return
+        self.rotation_plot.setLimits(
+            xMin=0.0,
+            xMax=self.depth_axis_max_m,
+            yMin=self._rotation_axis_range[0],
+            yMax=self._rotation_axis_range[1],
+        )
+        self.speed_plot.setLimits(
+            xMin=0.0,
+            xMax=self.depth_axis_max_m,
+            yMin=self._speed_axis_range[0],
+            yMax=self._speed_axis_range[1],
+        )
+        self.rotation_plot.setXRange(0.0, self.depth_axis_max_m, padding=0)
+        self.rotation_plot.setYRange(*self._rotation_axis_range, padding=0)
+        self.speed_plot.setXRange(0.0, self.depth_axis_max_m, padding=0)
+        self.speed_plot.setYRange(*self._speed_axis_range, padding=0)
 
     def _set_advisory_targets(self, recommendation: dict) -> None:
         recommended = recommendation["recommended"]
@@ -637,10 +693,13 @@ class Performance3DWidget(QWidget):
             y=y_axis,
             z=z_values,
             shader="shaded",
-            color=(0.18, 0.48, 0.64, 0.78),
+            colors=self._surface_heatmap_colors(speed),
+            glOptions="translucent",
         )
         self.surface_view.addItem(surface_item)
         self._surface_items.append(surface_item)
+        self._add_surface_guides(x_axis, y_axis, z_values)
+        self._add_surface_peak_marker(x_axis, y_axis, z_values, speed)
         self._current_surface_energy_type = energy_type
         self._current_surface_source = source
 
@@ -657,9 +716,11 @@ class Performance3DWidget(QWidget):
             self._advisory_current_marker = gl.GLScatterPlotItem(
                 pos=current_array,
                 color=(0.95, 0.95, 0.95, 1.0),
-                size=11,
+                size=13,
                 pxMode=True,
+                glOptions="additive",
             )
+            self._make_overlay_item(self._advisory_current_marker, depth=90)
             self.surface_view.addItem(self._advisory_current_marker)
             self._marker_items.append(self._advisory_current_marker)
         else:
@@ -669,9 +730,11 @@ class Performance3DWidget(QWidget):
             self._advisory_recommended_marker = gl.GLScatterPlotItem(
                 pos=recommended_array,
                 color=(1.0, 0.12, 0.08, 1.0),
-                size=14,
+                size=16,
                 pxMode=True,
+                glOptions="additive",
             )
+            self._make_overlay_item(self._advisory_recommended_marker, depth=91)
             self.surface_view.addItem(self._advisory_recommended_marker)
             self._marker_items.append(self._advisory_recommended_marker)
         else:
@@ -681,10 +744,12 @@ class Performance3DWidget(QWidget):
             self._advisory_link_item = gl.GLLinePlotItem(
                 pos=link_array,
                 color=(1.0, 1.0, 1.0, 0.95),
-                width=3,
+                width=4,
                 antialias=True,
                 mode="line_strip",
+                glOptions="additive",
             )
+            self._make_overlay_item(self._advisory_link_item, depth=89)
             self.surface_view.addItem(self._advisory_link_item)
             self._marker_items.append(self._advisory_link_item)
         else:
@@ -750,10 +815,13 @@ class Performance3DWidget(QWidget):
             y=y_axis,
             z=z_values,
             shader="shaded",
-            color=(0.16, 0.34, 0.48, 0.56),
+            colors=self._surface_heatmap_colors(z_values),
+            glOptions="translucent",
         )
         self.surface_view.addItem(surface_item)
         self._surface_items.append(surface_item)
+        self._add_surface_guides(x_axis, y_axis, z_values)
+        self._add_surface_peak_marker(x_axis, y_axis, z_values, z_values)
         self._current_surface_energy_type = energy_type
         self._current_surface_source = "advisory_fallback"
 
@@ -776,9 +844,11 @@ class Performance3DWidget(QWidget):
             self._advisory_current_marker = gl.GLScatterPlotItem(
                 pos=current_array,
                 color=(0.95, 0.95, 0.95, 1.0),
-                size=12,
+                size=14,
                 pxMode=True,
+                glOptions="additive",
             )
+            self._make_overlay_item(self._advisory_current_marker, depth=90)
             self.surface_view.addItem(self._advisory_current_marker)
             self._marker_items.append(self._advisory_current_marker)
         else:
@@ -820,6 +890,200 @@ class Performance3DWidget(QWidget):
         normalized = (speed - z_min) / (z_max - z_min)
         return 4.0 + normalized * (self.surface_height - 8.0)
 
+    def _surface_heatmap_colors(self, values) -> np.ndarray:
+        array = np.asarray(values, dtype=float)
+        finite = array[np.isfinite(array)]
+        if finite.size == 0:
+            normalized = np.zeros(array.shape, dtype=float)
+        else:
+            value_min = float(np.nanmin(finite))
+            value_max = float(np.nanmax(finite))
+            if abs(value_max - value_min) < 1e-12:
+                normalized = np.full(array.shape, 0.5, dtype=float)
+            else:
+                normalized = np.clip((array - value_min) / (value_max - value_min), 0.0, 1.0)
+                normalized = np.where(np.isfinite(normalized), normalized, 0.0)
+
+        stops = np.asarray([0.0, 0.28, 0.52, 0.76, 1.0], dtype=float)
+        palette = np.asarray(
+            [
+                [0.03, 0.18, 0.70, 0.78],
+                [0.00, 0.62, 0.95, 0.84],
+                [0.10, 0.78, 0.40, 0.90],
+                [1.00, 0.82, 0.12, 0.97],
+                [1.00, 0.08, 0.03, 1.00],
+            ],
+            dtype=float,
+        )
+        colors = np.empty(array.shape + (4,), dtype=float)
+        for channel in range(4):
+            colors[..., channel] = np.interp(normalized, stops, palette[:, channel])
+        return colors
+
+    def _add_surface_guides(self, x_axis, y_axis, z_values) -> None:
+        x = np.asarray(x_axis, dtype=float)
+        y = np.asarray(y_axis, dtype=float)
+        z = np.asarray(z_values, dtype=float)
+        if x.ndim != 1 or y.ndim != 1 or z.ndim != 2:
+            return
+        if z.shape != (len(x), len(y)):
+            return
+        if len(x) < 2 or len(y) < 2:
+            return
+
+        grid_lift = 0.45
+        grid_color = (0.90, 0.96, 1.0, 0.25)
+        grid_items = []
+        for y_index in self._regular_surface_indices(len(y), 8):
+            points = np.column_stack(
+                [
+                    x,
+                    np.full(len(x), y[y_index], dtype=float),
+                    z[:, y_index] + grid_lift,
+                ]
+            )
+            grid_items.append(
+                gl.GLLinePlotItem(
+                    pos=points,
+                    color=grid_color,
+                    width=1,
+                    antialias=True,
+                    mode="line_strip",
+                    glOptions="translucent",
+                )
+            )
+        for x_index in self._regular_surface_indices(len(x), 8):
+            points = np.column_stack(
+                [
+                    np.full(len(y), x[x_index], dtype=float),
+                    y,
+                    z[x_index, :] + grid_lift,
+                ]
+            )
+            grid_items.append(
+                gl.GLLinePlotItem(
+                    pos=points,
+                    color=grid_color,
+                    width=1,
+                    antialias=True,
+                    mode="line_strip",
+                    glOptions="translucent",
+                )
+            )
+
+        for item in grid_items:
+            self._make_overlay_item(item, depth=48)
+            self.surface_view.addItem(item)
+        self._surface_items.extend(grid_items)
+
+        axis_lift = 1.0
+        pressure_axis_line = gl.GLLinePlotItem(
+            pos=np.column_stack([x, np.full(len(x), y[0], dtype=float), z[:, 0] + axis_lift]),
+            color=(0.35, 0.78, 1.0, 0.95),
+            width=3,
+            antialias=True,
+            mode="line_strip",
+            glOptions="translucent",
+        )
+        pressure_rotation_line = gl.GLLinePlotItem(
+            pos=np.column_stack([np.full(len(y), x[0], dtype=float), y, z[0, :] + axis_lift]),
+            color=(0.38, 1.0, 0.64, 0.95),
+            width=3,
+            antialias=True,
+            mode="line_strip",
+            glOptions="translucent",
+        )
+        speed_start_z = float(z[0, 0] + axis_lift)
+        speed_end_z = float(max(np.nanmax(z) + 6.0, self.surface_height + 4.0))
+        speed_line = gl.GLLinePlotItem(
+            pos=np.asarray(
+                [
+                    [float(x[0]), float(y[0]), speed_start_z],
+                    [float(x[0]), float(y[0]), speed_end_z],
+                ],
+                dtype=float,
+            ),
+            color=(1.0, 0.90, 0.10, 0.95),
+            width=3,
+            antialias=True,
+            mode="line_strip",
+            glOptions="translucent",
+        )
+        axis_items = [pressure_axis_line, pressure_rotation_line, speed_line]
+        for item in axis_items:
+            self._make_overlay_item(item, depth=52)
+            self.surface_view.addItem(item)
+        self._surface_items.extend(axis_items)
+
+        label_items = [
+            self._add_text_item(
+                self.surface_view,
+                "pressure axis",
+                (float(x[-1] + 7.0), float(y[0]), float(z[-1, 0] + 3.0)),
+            ),
+            self._add_text_item(
+                self.surface_view,
+                "pressure rotation",
+                (float(x[0]), float(y[-1] + 7.0), float(z[0, -1] + 3.0)),
+            ),
+            self._add_text_item(
+                self.surface_view,
+                "speed",
+                (float(x[0] - 7.0), float(y[0] - 5.0), speed_end_z + 3.0),
+            ),
+        ]
+        self._surface_items.extend(label_items)
+
+    def _regular_surface_indices(self, size: int, max_count: int) -> list[int]:
+        if size <= 0:
+            return []
+        if size <= max_count:
+            return list(range(size))
+        values = np.linspace(0, size - 1, max_count)
+        return sorted({int(round(value)) for value in values})
+
+    def _add_surface_peak_marker(self, x_axis, y_axis, z_values, heat_values) -> None:
+        heat = np.asarray(heat_values, dtype=float)
+        z = np.asarray(z_values, dtype=float)
+        if heat.ndim != 2 or z.ndim != 2 or heat.shape != z.shape:
+            return
+        finite_mask = np.isfinite(heat) & np.isfinite(z)
+        if not finite_mask.any():
+            return
+
+        safe_heat = np.where(finite_mask, heat, -np.inf)
+        peak_x_index, peak_y_index = np.unravel_index(int(np.argmax(safe_heat)), safe_heat.shape)
+        peak_x = float(np.asarray(x_axis, dtype=float)[peak_x_index])
+        peak_y = float(np.asarray(y_axis, dtype=float)[peak_y_index])
+        peak_z = float(z[peak_x_index, peak_y_index])
+        marker_z = peak_z + 6.0
+
+        stem = gl.GLLinePlotItem(
+            pos=np.asarray([[peak_x, peak_y, peak_z + 0.8], [peak_x, peak_y, marker_z]], dtype=float),
+            color=(1.0, 0.92, 0.08, 1.0),
+            width=3,
+            antialias=True,
+            mode="line_strip",
+            glOptions="additive",
+        )
+        marker = gl.GLScatterPlotItem(
+            pos=np.asarray([[peak_x, peak_y, marker_z]], dtype=float),
+            color=(1.0, 0.95, 0.05, 1.0),
+            size=16,
+            pxMode=True,
+            glOptions="additive",
+        )
+        self._make_overlay_item(stem, depth=60)
+        self._make_overlay_item(marker, depth=61)
+        self.surface_view.addItem(stem)
+        self.surface_view.addItem(marker)
+        self._surface_items.extend([stem, marker])
+
+    def _make_overlay_item(self, item, depth: int = 80):
+        if hasattr(item, "setDepthValue"):
+            item.setDepthValue(depth)
+        return item
+
     def _advisory_point_to_scene(self, point: dict, speed_key: str) -> tuple[float, float, float]:
         bounds = self._advisory_surface_bounds
         pressure_axis = _clamp(
@@ -845,7 +1109,7 @@ class Performance3DWidget(QWidget):
             self.surface_size_y,
         )
         z = self._surface_scene_z_at(pressure_axis, pressure_rotation)
-        return (x, y, z + 2.5)
+        return (x, y, z + 5.0)
 
     def _surface_scene_z_at(self, pressure_axis: float, pressure_rotation: float) -> float:
         if not self._advisory_surface_scene:
@@ -951,6 +1215,13 @@ class Performance3DWidget(QWidget):
         low = float(np.nanquantile(finite, low_quantile))
         high = float(np.nanquantile(finite, high_quantile))
         if low >= high:
+            return array
+        return np.clip(array, low, high)
+
+    def _clip_to_range(self, values, value_range: tuple[float, float]) -> np.ndarray:
+        array = np.asarray(values, dtype=float)
+        low, high = value_range
+        if not math.isfinite(low) or not math.isfinite(high) or low >= high:
             return array
         return np.clip(array, low, high)
 
@@ -1131,6 +1402,32 @@ def _normalize_to_height(value: float, minimum: float, maximum: float, height: f
     if abs(maximum - minimum) < 1e-12:
         return height * 0.5
     return 4.0 + ((value - minimum) / (maximum - minimum)) * (height - 8.0)
+
+
+def _padded_range(minimum: float, maximum: float, min_padding: float) -> tuple[float, float]:
+    if not math.isfinite(minimum) or not math.isfinite(maximum):
+        return (0.0, max(min_padding, 1.0))
+    if maximum < minimum:
+        minimum, maximum = maximum, minimum
+    span = maximum - minimum
+    padding = max(span * 0.06, min_padding)
+    low = minimum - padding
+    high = maximum + padding
+    if low >= high:
+        high = low + max(min_padding, 1.0)
+    return (low, high)
+
+
+def _replay_csv_path() -> Path:
+    repository_root = Path(__file__).resolve().parents[3]
+    candidate_paths = [
+        repository_root / "notebooks" / "united_rock_energy_segment_quantile.csv",
+        Path(__file__).resolve().parents[1] / "data" / "united_rock_energy_segment_quantile.csv",
+    ]
+    for path in candidate_paths:
+        if path.exists():
+            return path
+    return candidate_paths[0]
 
 
 Performance3DWidgetStub = Performance3DWidget
