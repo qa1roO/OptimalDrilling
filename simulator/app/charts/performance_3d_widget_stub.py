@@ -75,7 +75,8 @@ class Performance3DWidget(QWidget):
         self._advisory_surface_bounds: dict[str, float] = {}
         self._advisory_surface_scene: dict[str, object] = {}
         self._advisory_surface_ranges: dict[str, dict[str, float]] = {}
-        self._speed_smoothing_window = 7
+        self._speed_smoothing_window = 35
+        self._rotation_smoothing_window = 9
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -219,8 +220,9 @@ class Performance3DWidget(QWidget):
         if self._advisory_engine is None:
             self._draw_advisory_preview_surface_if_needed(telemetry_row)
             self._update_advisory_preview_marker(telemetry_row)
+            surface_status = self._surface_status_name(self._current_surface_source)
             self.status_label.setText(
-                "Advisory: unavailable, fallback mode. "
+                f"Advisory: unavailable, fallback mode. Surface: {surface_status}. "
                 f"{self._advisory_error or 'Check ML artifacts and dependencies.'}"
             )
             return
@@ -232,20 +234,17 @@ class Performance3DWidget(QWidget):
             self._update_advisory_preview_marker(telemetry_row)
             self.rotation_target_line.hide()
             self.speed_target_line.hide()
+            surface_status = self._surface_status_name(self._current_surface_source)
             self.status_label.setText(
                 "Advisory: warming up buffer, showing current pressure position "
                 f"({len(self._advisory_engine.rows)}/{self._advisory_engine.min_buffer_size}), "
-                f"energy={energy_type}, depth={depth_m:0.1f}m."
+                f"energy={energy_type}, depth={depth_m:0.1f}m | Surface: {surface_status}."
             )
             return
 
         energy_type = str(recommendation["energy_type"])
         self._set_advisory_targets(recommendation)
-        surface = self._notebook_surfaces.get(energy_type)
-        if surface is None:
-            if energy_type not in self._cached_surface_by_energy_type:
-                self._cached_surface_by_energy_type[energy_type] = recommendation["surface"]
-            surface = self._cached_surface_by_energy_type[energy_type]
+        surface = self._get_surface_for_energy_type(energy_type, recommendation)
         surface_source = str(surface.get("source", "advisory"))
         if (
             energy_type != self._current_surface_energy_type
@@ -259,8 +258,9 @@ class Performance3DWidget(QWidget):
         self._update_advisory_markers(recommendation)
         current = recommendation["current"]
         recommended = recommendation["recommended"]
+        surface_status = self._surface_status_name(surface_source)
         self.status_label.setText(
-            f"Energy: {energy_type} | depth={depth_m:0.1f}m | "
+            f"Energy: {energy_type} | depth={depth_m:0.1f}m | Surface: {surface_status} | "
             f"current p_ax={current['pressure_axis']:0.0f}, p_rot={current['pressure_rotation']:0.0f}, "
             f"speed={current['speed']:0.4f} m/s | recommended p_ax={recommended['pressure_axis']:0.0f}, "
             f"p_rot={recommended['pressure_rotation']:0.0f} | uplift={recommended['predicted_uplift_pct']:+0.2f}% | "
@@ -458,8 +458,20 @@ class Performance3DWidget(QWidget):
         xs = [depth - first_depth for depth in self._live_depths_m]
         rotations = [point.rotation for point in self._live_points]
         speeds = [point.speed for point in self._live_points]
-        self.rotation_curve.setData(xs, rotations)
-        self.speed_curve.setData(xs, self._rolling_mean(speeds, self._speed_smoothing_window))
+        self.rotation_curve.setData(
+            xs,
+            self._rolling_mean(
+                self._clip_series(rotations, low_quantile=0.02, high_quantile=0.98),
+                self._rotation_smoothing_window,
+            ),
+        )
+        self.speed_curve.setData(
+            xs,
+            self._rolling_mean(
+                self._clip_series(speeds, low_quantile=0.03, high_quantile=0.97),
+                self._speed_smoothing_window,
+            ),
+        )
 
         self._clear_plot_items()
         if self._surface_segment_points and self._mode != "advisory":
@@ -511,6 +523,20 @@ class Performance3DWidget(QWidget):
         self.rotation_target_line.show()
         self.speed_target_line.setValue(recommended["predicted_target_speed"])
         self.speed_target_line.show()
+
+    def _get_surface_for_energy_type(self, energy_type: str, recommendation: dict) -> dict:
+        if energy_type in self._cached_surface_by_energy_type:
+            return self._cached_surface_by_energy_type[energy_type]
+
+        notebook_surface = self._notebook_surfaces.get(energy_type)
+        if notebook_surface is not None:
+            self._cached_surface_by_energy_type[energy_type] = notebook_surface
+            return notebook_surface
+
+        fallback_surface = dict(recommendation["surface"])
+        fallback_surface["source"] = "advisory_fallback"
+        self._cached_surface_by_energy_type[energy_type] = fallback_surface
+        return fallback_surface
 
     def _draw_advisory_surface(self, surface: dict, energy_type: str, source: str) -> None:
         self._clear_surface_items()
@@ -581,7 +607,11 @@ class Performance3DWidget(QWidget):
 
     def _draw_advisory_preview_surface_if_needed(self, telemetry_row: dict) -> None:
         energy_type = str(telemetry_row.get("rock_energy_type_final", "unknown"))
-        notebook_surface = self._notebook_surfaces.get(energy_type)
+        notebook_surface = self._cached_surface_by_energy_type.get(energy_type)
+        if notebook_surface is None:
+            notebook_surface = self._notebook_surfaces.get(energy_type)
+            if notebook_surface is not None:
+                self._cached_surface_by_energy_type[energy_type] = notebook_surface
         if notebook_surface is not None:
             source = str(notebook_surface.get("source", "notebook_plotly_surface"))
             if (
@@ -597,7 +627,7 @@ class Performance3DWidget(QWidget):
             return
         if (
             energy_type == self._current_surface_energy_type
-            and self._current_surface_source == "preview"
+            and self._current_surface_source == "advisory_fallback"
         ):
             return
         self._draw_advisory_preview_surface(telemetry_row)
@@ -640,7 +670,7 @@ class Performance3DWidget(QWidget):
         self.surface_view.addItem(surface_item)
         self._surface_items.append(surface_item)
         self._current_surface_energy_type = energy_type
-        self._current_surface_source = "preview"
+        self._current_surface_source = "advisory_fallback"
 
     def _update_advisory_preview_marker(self, telemetry_row: dict) -> None:
         if not self._advisory_surface_bounds:
@@ -802,7 +832,7 @@ class Performance3DWidget(QWidget):
             self.surface_view.removeItem(item)
         self._marker_items.clear()
 
-    def _rolling_mean(self, values: list[float], window: int) -> np.ndarray:
+    def _rolling_mean(self, values, window: int) -> np.ndarray:
         array = np.asarray(values, dtype=float)
         if len(array) < 2 or window <= 1:
             return array
@@ -811,6 +841,27 @@ class Performance3DWidget(QWidget):
             start = max(0, index - window + 1)
             smoothed[index] = float(np.nanmean(array[start : index + 1]))
         return smoothed
+
+    def _clip_series(
+        self,
+        values: list[float],
+        low_quantile: float,
+        high_quantile: float,
+    ) -> np.ndarray:
+        array = np.asarray(values, dtype=float)
+        finite = array[np.isfinite(array)]
+        if len(finite) < 8:
+            return array
+        low = float(np.nanquantile(finite, low_quantile))
+        high = float(np.nanquantile(finite, high_quantile))
+        if low >= high:
+            return array
+        return np.clip(array, low, high)
+
+    def _surface_status_name(self, source: str | None) -> str:
+        if source == "notebook_plotly_surface":
+            return "notebook/canonical"
+        return "live advisory fallback"
 
     def _live_color(self) -> tuple[float, float, float, float]:
         colors = (

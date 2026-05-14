@@ -36,7 +36,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .rock_layer_generator_stub import ENERGY_TYPE_TO_ID, generate_rock_layers
+from .rock_layer_generator_stub import ENERGY_TYPE_TO_ID, RockLayer, generate_rock_layers
 
 # ---------- Геометрия сцены ----------
 SCENE_W = 900.0
@@ -110,6 +110,27 @@ Z_OVERLAY = 40.0
 BIT_TIP_OFFSET_Y = BIT_CONE_OFFSET_Y + BIT_CONE_H
 PIPE_END_OFFSET_M = (BIT_TIP_OFFSET_Y / SECTION_H) * MAX_DEPTH_M
 MAX_REPLAY_ROWS = 1200
+MIN_ROWS_PER_LAYER = 30
+REPLAY_DEPTH_COLUMNS = ("depth_m", "depth")
+
+ENERGY_LAYER_STYLE = {
+    "soft_low_energy": {
+        "name": "Soft energy",
+        "color_hex": "#d8c3a5",
+    },
+    "medium_low_energy": {
+        "name": "Medium-low energy",
+        "color_hex": "#d9b678",
+    },
+    "medium_high_energy": {
+        "name": "Medium-high energy",
+        "color_hex": "#8b7d70",
+    },
+    "hard_high_energy": {
+        "name": "Hard energy",
+        "color_hex": "#6f7480",
+    },
+}
 
 
 class SideViewWidget(QWidget):
@@ -132,9 +153,17 @@ class SideViewWidget(QWidget):
         self._is_retracting = False
         self.target_depth_m = random.uniform(MIN_DEPTH_M, MAX_DEPTH_M)
         self.last_completed_depth_m = 0.0
-        self.region, self.layers = generate_rock_layers()
         self._geology_items: list = []
-        self._replay_rows = self._load_replay_rows()
+        self._replay_rows_by_well = self._load_replay_rows_by_well()
+        self._available_wells = list(self._replay_rows_by_well)
+        self._current_well_idx = 0
+        self._replay_rows: list[dict] = []
+        self._replay_depth_column: str | None = None
+        self._replay_depth_start = 0.0
+        self._replay_depth_scale = 1.0
+        self._select_replay_well(advance=False)
+        if not self._replay_rows:
+            self.region, self.layers = generate_rock_layers()
         self._replay_index = 0
         self._last_replay_energy_type = ""
 
@@ -903,7 +932,9 @@ class SideViewWidget(QWidget):
     def _current_replay_row(self) -> dict | None:
         if not self._replay_rows:
             return None
-        return self._replay_rows[self._replay_index % len(self._replay_rows)]
+        if self._replay_index >= len(self._replay_rows):
+            return None
+        return self._replay_rows[self._replay_index]
 
     def _current_drilling_speed(self) -> float:
         base_speed = ROCK_DRILL_SPEED_MPS.get(self._current_layer_name(), 0.012)
@@ -920,8 +951,9 @@ class SideViewWidget(QWidget):
             self.target_depth_m = random.uniform(MIN_DEPTH_M, MAX_DEPTH_M)
             self.pulley_angle_rad = 0.0
             self.tool_spin_angle_rad = 0.0
-            self.region, self.layers = generate_rock_layers()
-            self._replay_index = 0
+            self._select_replay_well(advance=True)
+            if not self._replay_rows:
+                self.region, self.layers = generate_rock_layers()
             self._last_replay_energy_type = ""
             self.region_text.setText(f"Region: {self.region}")
             self._clear_geology()
@@ -933,6 +965,9 @@ class SideViewWidget(QWidget):
         self._tick += 0.06
         self.elapsed_time_s += TIMER_INTERVAL_MS / 1000.0
         replay_row = self._current_replay_row()
+        if replay_row is None and self._replay_rows and not self._is_retracting:
+            self.last_completed_depth_m = self.depth_m
+            self._is_retracting = True
         if replay_row is None:
             self.rot_speed_rpm = ROT_SPEED_BASE_RPM + ROT_SPEED_SWING_RPM * math.cos(self._tick * 1.2)
         else:
@@ -944,10 +979,16 @@ class SideViewWidget(QWidget):
             else:
                 current_speed = max(_to_float(replay_row.get("speed"), 0.0), 0.001)
             depth_step = current_speed * DRILLING_SPEED_TO_DEPTH_STEP
+            if replay_row is not None and self._replay_depth_column is None:
+                depth_step *= self._replay_depth_scale
             delta = 2 * math.pi * (self.rot_speed_rpm / 60.0) * (TIMER_INTERVAL_MS / 1000.0)
             self.pulley_angle_rad += delta
             self.tool_spin_angle_rad += delta
-            self.depth_m = min(self.depth_m + depth_step, self.target_depth_m)
+            replay_depth = self._replay_depth_for_row(replay_row) if replay_row is not None else None
+            if replay_depth is None:
+                self.depth_m = min(self.depth_m + depth_step, self.target_depth_m)
+            else:
+                self.depth_m = min(replay_depth, self.target_depth_m)
             pipe_end_depth_m = max(self.depth_m - self._pipe_end_offset_m(), 0.0)
             self.hole_depth_m = max(self.hole_depth_m, pipe_end_depth_m)
             if replay_row is None:
@@ -1079,28 +1120,146 @@ class SideViewWidget(QWidget):
             return self._last_replay_energy_type
         return self._current_layer_energy_type()
 
-    def _load_replay_rows(self) -> list[dict]:
+    def _select_replay_well(self, advance: bool) -> None:
+        if not self._available_wells:
+            self._replay_rows = []
+            self._replay_depth_column = None
+            return
+
+        if advance:
+            self._current_well_idx = (self._current_well_idx + 1) % len(self._available_wells)
+
+        well_id = self._available_wells[self._current_well_idx]
+        self._replay_rows = list(self._replay_rows_by_well.get(well_id, []))
+        self._replay_index = 0
+        self._replay_depth_column = self._detect_replay_depth_column(self._replay_rows)
+        self._replay_depth_start = 0.0
+        if self._replay_depth_column and self._replay_rows:
+            self._replay_depth_start = _to_float(self._replay_rows[0].get(self._replay_depth_column), 0.0)
+        raw_depth_span = self._raw_replay_depth_span()
+        self.target_depth_m = self._target_depth_from_replay_rows(raw_depth_span)
+        self._replay_depth_scale = 1.0
+        if raw_depth_span > 1e-9:
+            self._replay_depth_scale = self.target_depth_m / raw_depth_span
+
+        self.region = f"Replay well {well_id}"
+        self.layers = self._build_layers_from_replay_rows()
+
+    def _build_layers_from_replay_rows(self) -> list[RockLayer]:
+        if not self._replay_rows:
+            _, fallback_layers = generate_rock_layers()
+            return fallback_layers
+
+        intervals: list[tuple[str, int, int]] = []
+        start_idx = 0
+        current = str(self._replay_rows[0].get("rock_energy_type_final", "medium_low_energy"))
+        for index, row in enumerate(self._replay_rows[1:], start=1):
+            energy_type = str(row.get("rock_energy_type_final", current))
+            if energy_type != current:
+                intervals.append((current, start_idx, index - 1))
+                current = energy_type
+                start_idx = index
+        intervals.append((current, start_idx, len(self._replay_rows) - 1))
+        intervals = self._merge_short_energy_intervals(intervals)
+
+        layers: list[RockLayer] = []
+        for energy_type, start, end in intervals:
+            style = ENERGY_LAYER_STYLE.get(energy_type, ENERGY_LAYER_STYLE["medium_low_energy"])
+            thickness = self._interval_thickness(start, end)
+            layers.append(
+                RockLayer(
+                    name=str(style["name"]),
+                    thickness=max(thickness, 1.0),
+                    color_hex=str(style["color_hex"]),
+                    energy_type=energy_type,
+                )
+            )
+        return layers
+
+    def _merge_short_energy_intervals(self, intervals: list[tuple[str, int, int]]) -> list[tuple[str, int, int]]:
+        if len(intervals) <= 1:
+            return intervals
+
+        merged: list[tuple[str, int, int]] = []
+        for energy_type, start, end in intervals:
+            row_count = end - start + 1
+            if merged and row_count < MIN_ROWS_PER_LAYER:
+                previous_energy, previous_start, _ = merged[-1]
+                merged[-1] = (previous_energy, previous_start, end)
+            else:
+                merged.append((energy_type, start, end))
+
+        if len(merged) > 1:
+            energy_type, start, end = merged[-1]
+            if end - start + 1 < MIN_ROWS_PER_LAYER:
+                previous_energy, previous_start, _ = merged[-2]
+                merged[-2] = (previous_energy, previous_start, end)
+                merged.pop()
+        return merged
+
+    def _interval_thickness(self, start: int, end: int) -> float:
+        if not self._replay_depth_column:
+            return sum(
+                max(_to_float(row.get("speed"), 0.0), 0.001) * DRILLING_SPEED_TO_DEPTH_STEP * self._replay_depth_scale
+                for row in self._replay_rows[start : end + 1]
+            )
+
+        start_depth = _to_float(self._replay_rows[start].get(self._replay_depth_column), 0.0)
+        end_depth = _to_float(self._replay_rows[end].get(self._replay_depth_column), start_depth)
+        return max((end_depth - start_depth) * self._replay_depth_scale, 1.0)
+
+    def _target_depth_from_replay_rows(self, raw_depth_span: float) -> float:
+        if not self._replay_rows:
+            return random.uniform(MIN_DEPTH_M, MAX_DEPTH_M)
+        if raw_depth_span <= 0:
+            return random.uniform(MIN_DEPTH_M, MAX_DEPTH_M)
+        return min(max(raw_depth_span, MIN_DEPTH_M), MAX_DEPTH_M)
+
+    def _raw_replay_depth_span(self) -> float:
+        if not self._replay_rows:
+            return 0.0
+        if self._replay_depth_column:
+            first = _to_float(self._replay_rows[0].get(self._replay_depth_column), 0.0)
+            last = _to_float(self._replay_rows[-1].get(self._replay_depth_column), first)
+            return max(last - first, 0.0)
+        return sum(
+            max(_to_float(row.get("speed"), 0.0), 0.001) * DRILLING_SPEED_TO_DEPTH_STEP
+            for row in self._replay_rows
+        )
+
+    def _replay_depth_for_row(self, row: dict) -> float | None:
+        if not self._replay_depth_column:
+            return None
+        raw_depth = max(_to_float(row.get(self._replay_depth_column), self._replay_depth_start) - self._replay_depth_start, 0.0)
+        return raw_depth * self._replay_depth_scale
+
+    def _detect_replay_depth_column(self, rows: list[dict]) -> str | None:
+        if not rows:
+            return None
+        for column in REPLAY_DEPTH_COLUMNS:
+            if rows[0].get(column) not in (None, ""):
+                return column
+        return None
+
+    def _load_replay_rows_by_well(self) -> dict[str, list[dict]]:
         path = Path(__file__).resolve().parents[1] / "data" / "united_rock_energy_segment_quantile.csv"
         if not path.exists():
-            return []
+            return {}
 
-        replay_rows: list[dict] = []
-        active_well_id = ""
+        rows_by_well: dict[str, list[dict]] = {}
         with path.open("r", encoding="utf-8", newline="") as file:
             reader = csv.DictReader(file)
             for row in reader:
                 if not _is_valid_replay_row(row):
                     continue
                 well_id = str(row.get("well_id", ""))
-                if not active_well_id:
-                    active_well_id = well_id
-                if well_id != active_well_id and replay_rows:
-                    break
-                replay_rows.append(row)
-                if len(replay_rows) >= MAX_REPLAY_ROWS:
-                    break
+                if not well_id:
+                    continue
+                well_rows = rows_by_well.setdefault(well_id, [])
+                if len(well_rows) < MAX_REPLAY_ROWS:
+                    well_rows.append(row)
 
-        return replay_rows
+        return {well_id: rows for well_id, rows in rows_by_well.items() if rows}
 
 
 def _is_valid_replay_row(row: dict) -> bool:
