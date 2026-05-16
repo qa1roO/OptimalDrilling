@@ -1,39 +1,38 @@
-# Drilling Simulator Skeleton (Desktop App)
+# OptimalDrilling Simulator
 
-Test scaffold for a mining drilling rig simulator as a desktop application.
+Desktop simulator for drilling replay and advisory-model visualization.
 
-## Stack
+## Current Flow
 
-- Python 3.11+
-- PySide6 (UI)
-- pyqtgraph + OpenGL (3D chart placeholder)
+The application starts from `run.py`, creates `SimulatorMainWindow`, and shows two panels:
 
-## Scope in this skeleton
+- `app/scene/side_view_widget.py` - rig side view, borehole animation, replay well selection, telemetry signals.
+- `app/charts/performance_3d_widget_stub.py` - performance dashboard with depth-based 2D plots and a 3D advisory surface.
 
-- Left panel:
-  - side view of drilling rig (placeholder rendering)
-  - borehole cut
-  - rock layer "pie" from stub generator function
-- Right panel:
-  - 3D chart placeholder with axes:
-    - `Pressure`
-    - `RPM`
-    - `ROP` (rate of penetration)
-- Stub model feed to be replaced by trained model output later.
+The main runtime path is replay/advisory mode:
 
-## Project structure
+1. `SideViewWidget` reads replay telemetry from `united_rock_energy_segment_quantile.csv` when it is available.
+2. It emits `replay_sample(row, depth_m)` while the rig animation advances.
+3. `Performance3DWidget.append_advisory_telemetry()` updates the 2D charts and the 3D pressure surface.
+4. `AdvisoryEngine` loads joblib/LightGBM artifacts from `app/ml_artifacts`.
 
-- `run.py` - app entry point
-- `app/window.py` - main window composition
-- `app/scene/` - side-view scene and rock generation stub
-- `app/charts/` - 3D chart widget stub
-- `app/data/` - placeholder data from future model
+If replay telemetry is unavailable, the simulator can fall back to synthetic layer drilling and legacy cluster profiles from `simulator_core`.
 
 ## Run
 
 ```bash
-python -m venv .venv
-.venv\Scripts\activate
+python -m venv venv
+venv\Scripts\activate
 pip install -r requirements.txt
 python run.py
 ```
+
+## Important Files
+
+- `run.py` - application entry point.
+- `app/window.py` - main window composition.
+- `app/scene/` - drilling scene and layer generation.
+- `app/charts/` - dashboard charts and 3D surface rendering.
+- `app/data/advisory_engine.py` - advisory recommendation engine.
+- `app/ml_artifacts/` - model artifacts used by the advisory engine.
+- `simulator_core/` - legacy cluster artifacts used only by fallback mode.

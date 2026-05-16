@@ -48,7 +48,7 @@ class Performance3DWidget(QWidget):
         self._surface_segment_points: list[DrillingPoint] = []
         self._mode = "live"
         self._live_segment_index = 0
-        self.axis_description = "2D: depth/rotation + depth/speed. 3D: cluster surface."
+        self.axis_description = "2D: depth/rotation + depth/speed. 3D: advisory pressure surface."
         self._cluster_profiles: dict[int, ClusterProfile] = {}
         self._active_profile: ClusterProfile | None = None
         self._active_cluster_id: int | None = None
@@ -587,13 +587,6 @@ class Performance3DWidget(QWidget):
             speed_min, speed_max = _padded_range(min(speeds), max(speeds), min_padding=0.002)
             self._speed_axis_range = (max(speed_min, 0.0), speed_max)
 
-        print(
-            "Fixed chart ranges:",
-            f"depth=[0.0,{self.depth_axis_max_m:0.2f}]",
-            f"rotation=[{self._rotation_axis_range[0]:0.2f},{self._rotation_axis_range[1]:0.2f}]",
-            f"speed=[{self._speed_axis_range[0]:0.5f},{self._speed_axis_range[1]:0.5f}]",
-        )
-
     def _apply_fixed_chart_ranges(self) -> None:
         if not CHARTS_READY:
             return
@@ -706,8 +699,8 @@ class Performance3DWidget(QWidget):
     def _update_advisory_markers(self, recommendation: dict) -> None:
         if not self._advisory_surface_bounds:
             return
-        current_pos = self._advisory_point_to_scene(recommendation["current"], "predicted_target_speed")
-        recommended_pos = self._advisory_point_to_scene(recommendation["recommended"], "predicted_target_speed")
+        current_pos = self._advisory_point_to_scene(recommendation["current"])
+        recommended_pos = self._advisory_point_to_scene(recommendation["recommended"])
         current_array = np.asarray([current_pos], dtype=float)
         recommended_array = np.asarray([recommended_pos], dtype=float)
         link_array = np.asarray([current_pos, recommended_pos], dtype=float)
@@ -839,7 +832,7 @@ class Performance3DWidget(QWidget):
             "pressure_rotation": p_rot,
             "speed": speed,
         }
-        current_array = np.asarray([self._advisory_point_to_scene(current_point, "speed")], dtype=float)
+        current_array = np.asarray([self._advisory_point_to_scene(current_point)], dtype=float)
         if self._advisory_current_marker is None:
             self._advisory_current_marker = gl.GLScatterPlotItem(
                 pos=current_array,
@@ -1084,7 +1077,7 @@ class Performance3DWidget(QWidget):
             item.setDepthValue(depth)
         return item
 
-    def _advisory_point_to_scene(self, point: dict, speed_key: str) -> tuple[float, float, float]:
+    def _advisory_point_to_scene(self, point: dict) -> tuple[float, float, float]:
         bounds = self._advisory_surface_bounds
         pressure_axis = _clamp(
             float(point["pressure_axis"]),
@@ -1201,22 +1194,6 @@ class Performance3DWidget(QWidget):
             counts[window:] = counts[window:] - counts[:-window]
             totals[window:] = totals[window:] - totals[:-window]
         return totals / np.maximum(counts, 1.0)
-
-    def _clip_series(
-        self,
-        values: list[float],
-        low_quantile: float,
-        high_quantile: float,
-    ) -> np.ndarray:
-        array = np.asarray(values, dtype=float)
-        finite = array[np.isfinite(array)]
-        if len(finite) < 8:
-            return array
-        low = float(np.nanquantile(finite, low_quantile))
-        high = float(np.nanquantile(finite, high_quantile))
-        if low >= high:
-            return array
-        return np.clip(array, low, high)
 
     def _clip_to_range(self, values, value_range: tuple[float, float]) -> np.ndarray:
         array = np.asarray(values, dtype=float)
@@ -1428,6 +1405,3 @@ def _replay_csv_path() -> Path:
         if path.exists():
             return path
     return candidate_paths[0]
-
-
-Performance3DWidgetStub = Performance3DWidget

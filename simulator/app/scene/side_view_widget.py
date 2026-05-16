@@ -907,9 +907,6 @@ class SideViewWidget(QWidget):
         # Поэтому верх корпуса долота вычисляется с учетом смещения до кончика.
         return self._depth_to_section_y(self.depth_m) - BIT_TIP_OFFSET_Y
 
-    def _bit_tip_y(self) -> float:
-        return self._bit_y() + BIT_TIP_OFFSET_Y
-
     def _car_y(self) -> float:
         t = min(self.depth_m / self._depth_axis_limit_m(), 1.0)
         return CARRIAGE_TOP_Y + (CARRIAGE_BOT_Y - CARRIAGE_TOP_Y) * t
@@ -1169,20 +1166,6 @@ class SideViewWidget(QWidget):
 
         self.region = f"Replay well {well_id}"
         self.layers = self._build_layers_from_replay_rows()
-        if self._replay_rows:
-            first_row = self._replay_rows[0]
-            print("First replay row keys:", list(first_row.keys()))
-            print("First replay depth:", first_row.get("depth"), first_row.get("depth_m"))
-        print(
-            "Replay depth debug:",
-            f"well={well_id}",
-            f"depth_col={self._replay_depth_column}",
-            f"raw_start={self._replay_depth_start:0.4f}",
-            f"raw_end={self._replay_depth_end:0.4f}",
-            f"span={self._replay_depth_span:0.4f}",
-            f"target_depth={self.target_depth_m:0.4f}",
-            f"rows={len(self._replay_rows)}",
-        )
 
     def _build_layers_from_replay_rows(self) -> list[RockLayer]:
         if not self._replay_rows:
@@ -1320,9 +1303,6 @@ class SideViewWidget(QWidget):
         with path.open("r", encoding="utf-8", newline="") as file:
             reader = csv.DictReader(file)
             fieldnames = list(reader.fieldnames or [])
-            print("Replay CSV columns:", fieldnames)
-            print("Has depth:", "depth" in fieldnames)
-            print("Has depth_m:", "depth_m" in fieldnames)
             if fieldnames and not any(column in fieldnames for column in REPLAY_DEPTH_COLUMNS):
                 depth_lookup = _load_replay_depth_lookup()
             for row in reader:
@@ -1388,7 +1368,6 @@ def _replay_csv_path() -> Path:
     ]
     for path in candidate_paths:
         if path.exists():
-            print("Replay CSV path:", path)
             return path
     return candidate_paths[0]
 

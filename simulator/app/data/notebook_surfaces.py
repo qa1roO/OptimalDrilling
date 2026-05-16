@@ -25,18 +25,14 @@ def load_notebook_surface(energy_type: str, repository_root: Path) -> dict[str, 
 
 def load_notebook_surfaces(repository_root: Path) -> dict[str, dict[str, Any]]:
     surfaces: dict[str, dict[str, Any]] = {}
-    _print_surface_search_diagnostics(repository_root)
     surface_dir = _find_surface_dir(repository_root)
     if surface_dir is None:
-        print("Notebook surfaces not found, using advisory fallback surfaces")
         return surfaces
 
     for energy_type in ENERGY_TYPES:
         surface = _load_notebook_surface_from_dir(energy_type, surface_dir)
         if surface is not None:
             surfaces[energy_type] = surface
-    print(f"Loaded notebook surfaces from: {surface_dir}")
-    print(f"Loaded energy surfaces: {list(surfaces)}")
     return surfaces
 
 
@@ -53,15 +49,6 @@ def _surface_candidate_dirs(repository_root: Path) -> list[Path]:
         repository_root / "plotly_surfaces_html",
         repository_root / "simulator" / "app" / "data" / "plotly_surfaces_html",
     ]
-
-
-def _print_surface_search_diagnostics(repository_root: Path) -> None:
-    for directory in _surface_candidate_dirs(repository_root):
-        existing = [energy_type for energy_type in ENERGY_TYPES if (directory / f"surface_{energy_type}.html").exists()]
-        if existing:
-            print(f"Notebook surface candidate found: {directory} ({existing})")
-        else:
-            print(f"Notebook surface candidate missing or empty: {directory}")
 
 
 def _load_notebook_surface_from_dir(energy_type: str, surface_dir: Path) -> dict[str, Any] | None:
