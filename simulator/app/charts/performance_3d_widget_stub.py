@@ -1,4 +1,3 @@
-import csv
 import json
 import math
 from pathlib import Path
@@ -14,6 +13,16 @@ from app.data import (
     load_cluster_profiles,
 )
 from app.data.notebook_surfaces import load_notebook_surfaces
+from app.config import (
+    ADVISORY_UPDATE_STRIDE,
+    CHART_DEPTH_AXIS_MAX_M,
+    CHART_DEPTH_BIN_SIZE_M,
+    CHART_ROTATION_AXIS_RANGE,
+    CHART_ROTATION_SMOOTHING_WINDOW,
+    CHART_SPEED_AXIS_RANGE,
+    CHART_SPEED_SMOOTHING_WINDOW,
+    CHART_UPDATE_STRIDE,
+)
 
 try:
     import numpy as np
@@ -24,7 +33,6 @@ try:
 except Exception:  # pragma: no cover
     CHARTS_READY = False
 
-
 class Performance3DWidget(QWidget):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -34,9 +42,9 @@ class Performance3DWidget(QWidget):
         self.surface_size_x = 170.0
         self.surface_size_y = 120.0
         self.surface_height = 42.0
-        self.depth_axis_max_m = 40.0
-        self._rotation_axis_range = (45.0, 145.0)
-        self._speed_axis_range = (0.0, 0.045)
+        self.depth_axis_max_m = CHART_DEPTH_AXIS_MAX_M
+        self._rotation_axis_range = CHART_ROTATION_AXIS_RANGE
+        self._speed_axis_range = CHART_SPEED_AXIS_RANGE
         self._plot_items: list = []
         self._surface_items: list = []
         self._marker_items: list = []
@@ -82,15 +90,14 @@ class Performance3DWidget(QWidget):
         self._advisory_surface_bounds: dict[str, float] = {}
         self._advisory_surface_scene: dict[str, object] = {}
         self._advisory_surface_ranges: dict[str, dict[str, float]] = {}
-        self._speed_smoothing_window = 35
-        self._rotation_smoothing_window = 9
-        self._depth_bin_size_m = 0.2
+        self._speed_smoothing_window = CHART_SPEED_SMOOTHING_WINDOW
+        self._rotation_smoothing_window = CHART_ROTATION_SMOOTHING_WINDOW
+        self._depth_bin_size_m = CHART_DEPTH_BIN_SIZE_M
         self._chart_update_index = 0
-        self._chart_update_stride = 3
+        self._chart_update_stride = CHART_UPDATE_STRIDE
         self._advisory_update_index = 0
-        self._advisory_update_stride = 10
+        self._advisory_update_stride = ADVISORY_UPDATE_STRIDE
         self._last_advisory_compute_energy_type: str | None = None
-        self._load_fixed_chart_ranges()
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -557,35 +564,6 @@ class Performance3DWidget(QWidget):
         except Exception as exc:
             self._advisory_engine = None
             self._advisory_error = f"{type(exc).__name__}: {exc}"
-
-    def _load_fixed_chart_ranges(self) -> None:
-        path = _replay_csv_path()
-        if not path.exists():
-            return
-
-        rotations: list[float] = []
-        speeds: list[float] = []
-        depths_by_well: dict[str, list[float]] = {}
-        with path.open("r", encoding="utf-8", newline="") as file:
-            reader = csv.DictReader(file)
-            for row in reader:
-                rotation = _to_float(row.get("rotation"), math.nan)
-                speed = _to_float(row.get("speed"), math.nan)
-                if math.isfinite(rotation):
-                    rotations.append(rotation)
-                if math.isfinite(speed):
-                    speeds.append(speed)
-
-                depth = _to_float(row.get("depth_m", row.get("depth")), math.nan)
-                well_id = str(row.get("well_id", ""))
-                if well_id and math.isfinite(depth):
-                    depths_by_well.setdefault(well_id, []).append(depth)
-
-        if rotations:
-            self._rotation_axis_range = _padded_range(min(rotations), max(rotations), min_padding=5.0)
-        if speeds:
-            speed_min, speed_max = _padded_range(min(speeds), max(speeds), min_padding=0.002)
-            self._speed_axis_range = (max(speed_min, 0.0), speed_max)
 
     def _apply_fixed_chart_ranges(self) -> None:
         if not CHARTS_READY:
@@ -1381,27 +1359,3 @@ def _normalize_to_height(value: float, minimum: float, maximum: float, height: f
     return 4.0 + ((value - minimum) / (maximum - minimum)) * (height - 8.0)
 
 
-def _padded_range(minimum: float, maximum: float, min_padding: float) -> tuple[float, float]:
-    if not math.isfinite(minimum) or not math.isfinite(maximum):
-        return (0.0, max(min_padding, 1.0))
-    if maximum < minimum:
-        minimum, maximum = maximum, minimum
-    span = maximum - minimum
-    padding = max(span * 0.06, min_padding)
-    low = minimum - padding
-    high = maximum + padding
-    if low >= high:
-        high = low + max(min_padding, 1.0)
-    return (low, high)
-
-
-def _replay_csv_path() -> Path:
-    repository_root = Path(__file__).resolve().parents[3]
-    candidate_paths = [
-        repository_root / "notebooks" / "united_rock_energy_segment_quantile.csv",
-        Path(__file__).resolve().parents[1] / "data" / "united_rock_energy_segment_quantile.csv",
-    ]
-    for path in candidate_paths:
-        if path.exists():
-            return path
-    return candidate_paths[0]
