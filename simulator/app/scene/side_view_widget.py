@@ -108,7 +108,6 @@ Z_BIT = 30.0
 Z_OVERLAY = 40.0
 
 BIT_TIP_OFFSET_Y = BIT_CONE_OFFSET_Y + BIT_CONE_H
-PIPE_END_OFFSET_M = (BIT_TIP_OFFSET_Y / SECTION_H) * MAX_DEPTH_M
 MAX_REPLAY_ROWS = 1200
 MAX_REPLAY_WELLS = 64
 MIN_ROWS_PER_LAYER = 30
@@ -897,10 +896,12 @@ class SideViewWidget(QWidget):
         return SECTION_TOP + SECTION_H * min(depth_m / axis_limit_m, 1.0)
 
     def _depth_axis_limit_m(self) -> float:
-        return max(self.target_depth_m, MAX_DEPTH_M, 1.0)
+        # This is a visual normalization only: the current well depth fills the
+        # geology block, while labels and telemetry keep their real meter values.
+        return max(self.target_depth_m, 1.0)
 
     def _pipe_end_offset_m(self) -> float:
-        return PIPE_END_OFFSET_M
+        return (BIT_TIP_OFFSET_Y / SECTION_H) * self._depth_axis_limit_m()
 
     def _bit_y(self) -> float:
         # depth_m интерпретируется как глубина контакта шарошки с породой.
