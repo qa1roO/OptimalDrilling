@@ -96,7 +96,8 @@ DRILLING_SPEED_TO_DEPTH_STEP = 3.0
 MIN_DEPTH_M = 20.0
 MAX_DEPTH_M = 40.0
 RETRACT_STEP_M = 0.12
-TIMER_INTERVAL_MS = 40
+PLAYBACK_TIMER_INTERVAL_MS = 80
+SIMULATION_STEP_S = 0.04
 
 Z_GEOLOGY = -30.0
 Z_GEOLOGY_LABEL = -25.0
@@ -847,7 +848,7 @@ class SideViewWidget(QWidget):
         self.region_text.setPos(info_x, 24)
         self._add_item(self.region_text, Z_OVERLAY)
 
-        self.axial_text = pg.TextItem("Axial pressure: 0 kN", anchor=(1, 0), color="#c5d2e0")
+        self.axial_text = pg.TextItem("p_ax: 0", anchor=(1, 0), color="#c5d2e0")
         self.axial_text.setPos(info_x, 48)
         self._add_item(self.axial_text, Z_OVERLAY)
 
@@ -865,7 +866,7 @@ class SideViewWidget(QWidget):
         self.target_depth_text.setPos(info_x, 120)
         self._add_item(self.target_depth_text, Z_OVERLAY)
 
-        self.layer_speed_text = pg.TextItem("Layer speed: 0.000 m/s", anchor=(1, 0), color="#c5d2e0")
+        self.layer_speed_text = pg.TextItem("Quantile: unknown", anchor=(1, 0), color="#c5d2e0")
         self.layer_speed_text.setPos(info_x, 144)
         self._add_item(self.layer_speed_text, Z_OVERLAY)
 
@@ -873,7 +874,7 @@ class SideViewWidget(QWidget):
         self.carriage_rot_label.setFont(QFont("Segoe UI", 8))
         self._add_item(self.carriage_rot_label, Z_OVERLAY)
 
-        self.carriage_axial_label = pg.TextItem("axial: 0 kN", anchor=(0, 0.5), color="#f3d46b")
+        self.carriage_axial_label = pg.TextItem("p_ax: 0", anchor=(0, 0.5), color="#f3d46b")
         self.carriage_axial_label.setFont(QFont("Segoe UI", 8))
         self._add_item(self.carriage_axial_label, Z_OVERLAY)
 
@@ -885,7 +886,7 @@ class SideViewWidget(QWidget):
 
     def _start_timer(self) -> None:
         self.timer = QTimer(self)
-        self.timer.setInterval(TIMER_INTERVAL_MS)
+        self.timer.setInterval(PLAYBACK_TIMER_INTERVAL_MS)
         self.timer.timeout.connect(self._on_tick)
         self.timer.start()
 
@@ -904,8 +905,6 @@ class SideViewWidget(QWidget):
         return (BIT_TIP_OFFSET_Y / SECTION_H) * self._depth_axis_limit_m()
 
     def _bit_y(self) -> float:
-        # depth_m интерпретируется как глубина контакта шарошки с породой.
-        # Поэтому верх корпуса долота вычисляется с учетом смещения до кончика.
         return self._depth_to_section_y(self.depth_m) - BIT_TIP_OFFSET_Y
 
     def _car_y(self) -> float:
@@ -968,14 +967,14 @@ class SideViewWidget(QWidget):
             return
 
         self._tick += 0.06
-        self.elapsed_time_s += TIMER_INTERVAL_MS / 1000.0
+        self.elapsed_time_s += SIMULATION_STEP_S
         replay_row = self._current_replay_row()
         if replay_row is None and self._replay_rows and not self._is_retracting:
             self.last_completed_depth_m = self.depth_m
             self._is_retracting = True
-        if replay_row is None:
+        if replay_row is None and not self._is_retracting:
             self.rot_speed_rpm = ROT_SPEED_BASE_RPM + ROT_SPEED_SWING_RPM * math.cos(self._tick * 1.2)
-        else:
+        elif replay_row is not None and not self._is_retracting:
             self.rot_speed_rpm = _to_float(replay_row.get("rotation"), ROT_SPEED_BASE_RPM)
         current_speed = 0.0
         if not self._is_retracting:
@@ -983,7 +982,7 @@ class SideViewWidget(QWidget):
                 current_speed = self._current_drilling_speed()
             else:
                 current_speed = max(_to_float(replay_row.get("speed"), 0.0), 0.001)
-            delta = 2 * math.pi * (self.rot_speed_rpm / 60.0) * (TIMER_INTERVAL_MS / 1000.0)
+            delta = 2 * math.pi * (self.rot_speed_rpm / 60.0) * SIMULATION_STEP_S
             self.pulley_angle_rad += delta
             self.tool_spin_angle_rad += delta
             replay_depth = self._replay_depth_for_row(replay_row) if replay_row is not None else None
@@ -1011,7 +1010,7 @@ class SideViewWidget(QWidget):
                 self._last_replay_energy_type = str(replay_row.get("rock_energy_type_final", ""))
                 self._replay_index += 1
         else:
-            delta = 2 * math.pi * (self.rot_speed_rpm / 60.0) * (TIMER_INTERVAL_MS / 1000.0)
+            delta = 2 * math.pi * (self.rot_speed_rpm / 60.0) * SIMULATION_STEP_S
             self.pulley_angle_rad -= delta
             self.depth_m = max(self.depth_m - RETRACT_STEP_M, 0.0)
 
@@ -1025,19 +1024,18 @@ class SideViewWidget(QWidget):
             self.depth_m = 0.0
             self._pending_geology_reset = True
 
-        self.axial_pressure_kn = 430 + 34 * math.sin(self._tick)
+        if not self._is_retracting and replay_row is not None:
+            self.axial_pressure_kn = _to_float(replay_row.get("pressure_axis"), self.axial_pressure_kn)
+        elif not self._is_retracting:
+            self.axial_pressure_kn = 430 + 34 * math.sin(self._tick)
         self.current_drilling_speed_mps = current_speed
         self._sync()
 
-        self.axial_text.setText(f"Axial pressure: {self.axial_pressure_kn:0.0f} kN")
+        self.axial_text.setText(f"p_ax: {self.axial_pressure_kn:0.0f}")
         self.rot_text.setText(f"Rotation speed: {self.rot_speed_rpm:0.0f} rpm")
         self.total_depth_text.setText(f"Completed depth: {self.last_completed_depth_m:0.1f} m")
         self.target_depth_text.setText(f"Target depth: {self.target_depth_m:0.1f} m")
-        replay_debug = self._replay_depth_debug_text()
-        self.layer_speed_text.setText(
-            f"Layer: {self._current_layer_name()} | energy: {self._current_energy_label()} | "
-            f"speed: {self.current_drilling_speed_mps:0.3f} m/s{replay_debug}"
-        )
+        self.layer_speed_text.setText(f"Quantile: {self._current_energy_label()}")
 
     def _sync(self) -> None:
         """Синхронизирует все подвижные элементы с текущей depth_m."""
@@ -1106,7 +1104,7 @@ class SideViewWidget(QWidget):
         self.carriage_rot_label.setText(f"rotation: {self.rot_speed_rpm:0.0f} rpm")
         self.carriage_rot_label.setPos(PIPE_X + 42, car_y + CARRIAGE_H / 2 - 8)
 
-        self.carriage_axial_label.setText(f"axial: {self.axial_pressure_kn:0.0f} kN")
+        self.carriage_axial_label.setText(f"p_ax: {self.axial_pressure_kn:0.0f}")
         self.carriage_axial_label.setPos(PIPE_X + 42, car_y + CARRIAGE_H / 2 + 10)
 
         bit_label_y = min(bit_y + BIT_BODY_H + 16, SECTION_BOTTOM - 44)
@@ -1125,25 +1123,6 @@ class SideViewWidget(QWidget):
         if self._last_replay_energy_type:
             return self._last_replay_energy_type
         return self._current_layer_energy_type()
-
-    def _replay_depth_debug_text(self) -> str:
-        if not self._replay_rows or not self._replay_depth_column:
-            return ""
-        row_index = min(max(self._replay_index - 1, 0), len(self._replay_rows) - 1)
-        raw_depth = _to_float(
-            self._replay_rows[row_index].get(self._replay_depth_column),
-            math.nan,
-        )
-        if not math.isfinite(raw_depth):
-            return f" | depth_col={self._replay_depth_column} replay={self._replay_index}/{len(self._replay_rows)}"
-        relative_depth = max(raw_depth - self._replay_depth_start, 0.0)
-        return (
-            f" | depth_col={self._replay_depth_column}"
-            f" raw={raw_depth:0.1f}"
-            f" rel={relative_depth:0.1f}"
-            f" target={self.target_depth_m:0.1f}"
-            f" replay={self._replay_index}/{len(self._replay_rows)}"
-        )
 
     def _select_replay_well(self, advance: bool) -> None:
         if not self._available_wells:
