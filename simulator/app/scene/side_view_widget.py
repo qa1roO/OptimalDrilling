@@ -96,7 +96,8 @@ DRILLING_SPEED_TO_DEPTH_STEP = 3.0
 MIN_DEPTH_M = 20.0
 MAX_DEPTH_M = 40.0
 RETRACT_STEP_M = 0.12
-TIMER_INTERVAL_MS = 40
+PLAYBACK_TIMER_INTERVAL_MS = 80
+SIMULATION_STEP_S = 0.04
 
 Z_GEOLOGY = -30.0
 Z_GEOLOGY_LABEL = -25.0
@@ -885,7 +886,7 @@ class SideViewWidget(QWidget):
 
     def _start_timer(self) -> None:
         self.timer = QTimer(self)
-        self.timer.setInterval(TIMER_INTERVAL_MS)
+        self.timer.setInterval(PLAYBACK_TIMER_INTERVAL_MS)
         self.timer.timeout.connect(self._on_tick)
         self.timer.start()
 
@@ -968,7 +969,7 @@ class SideViewWidget(QWidget):
             return
 
         self._tick += 0.06
-        self.elapsed_time_s += TIMER_INTERVAL_MS / 1000.0
+        self.elapsed_time_s += SIMULATION_STEP_S
         replay_row = self._current_replay_row()
         if replay_row is None and self._replay_rows and not self._is_retracting:
             self.last_completed_depth_m = self.depth_m
@@ -983,7 +984,7 @@ class SideViewWidget(QWidget):
                 current_speed = self._current_drilling_speed()
             else:
                 current_speed = max(_to_float(replay_row.get("speed"), 0.0), 0.001)
-            delta = 2 * math.pi * (self.rot_speed_rpm / 60.0) * (TIMER_INTERVAL_MS / 1000.0)
+            delta = 2 * math.pi * (self.rot_speed_rpm / 60.0) * SIMULATION_STEP_S
             self.pulley_angle_rad += delta
             self.tool_spin_angle_rad += delta
             replay_depth = self._replay_depth_for_row(replay_row) if replay_row is not None else None
@@ -1011,7 +1012,7 @@ class SideViewWidget(QWidget):
                 self._last_replay_energy_type = str(replay_row.get("rock_energy_type_final", ""))
                 self._replay_index += 1
         else:
-            delta = 2 * math.pi * (self.rot_speed_rpm / 60.0) * (TIMER_INTERVAL_MS / 1000.0)
+            delta = 2 * math.pi * (self.rot_speed_rpm / 60.0) * SIMULATION_STEP_S
             self.pulley_angle_rad -= delta
             self.depth_m = max(self.depth_m - RETRACT_STEP_M, 0.0)
 
