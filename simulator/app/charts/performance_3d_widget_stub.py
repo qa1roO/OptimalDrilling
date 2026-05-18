@@ -37,8 +37,6 @@ class Performance3DWidget(QWidget):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setMinimumSize(760, 360)
-        self.speed_scale_3d = 1800.0
-        self.rotation_scale_3d = 1.0
         self.surface_size_x = 170.0
         self.surface_size_y = 120.0
         self.surface_height = 42.0
@@ -68,7 +66,6 @@ class Performance3DWidget(QWidget):
         self._segment_start_depth_m: float | None = None
         self._segment_start_point_value: DrillingPoint | None = None
         self._active_speed_target: float | None = None
-        self._graph_start_time_s: float | None = None
         self._graph_start_depth_m: float | None = None
         self._transition_duration_s = 10.0
         self._transition_depth_m = 3.0
@@ -79,8 +76,6 @@ class Performance3DWidget(QWidget):
         self._live_speed_min = 0.003
         self._live_speed_max = 0.035
         self._initial_rotation_rpm = 100.0
-        self._fast_speed_drop_ratio = 0.12
-        self._initial_speed_drop_k = 0.72
         self._surface_rotation_center = 100.0
         self._surface_speed_center = 0.02
         self._rotation_span = 44.0
@@ -160,7 +155,6 @@ class Performance3DWidget(QWidget):
         self._last_advisory_compute_energy_type = None
         if self._advisory_engine is not None:
             self._advisory_engine.reset()
-        self._graph_start_time_s = None
         self._graph_start_depth_m = None
         self._clear_plot_items()
         self._clear_surface_items()
@@ -250,10 +244,8 @@ class Performance3DWidget(QWidget):
         if self._advisory_engine is None:
             self._draw_advisory_preview_surface_if_needed(telemetry_row)
             self._update_advisory_preview_marker(telemetry_row)
-            surface_status = self._surface_status_name(self._current_surface_source)
             self.status_label.setText(
-                f"Advisory: unavailable, fallback mode. Surface: {surface_status}. "
-                f"{self._advisory_error or 'Check ML artifacts and dependencies.'}"
+                f"Advisory unavailable. {self._advisory_error or 'Check ML artifacts and dependencies.'}"
             )
             return
 
@@ -265,15 +257,19 @@ class Performance3DWidget(QWidget):
             self._update_advisory_preview_marker(telemetry_row)
             self.rotation_target_line.hide()
             self.speed_target_line.hide()
-            surface_status = self._surface_status_name(self._current_surface_source)
             self.status_label.setText(
-                "Advisory: warming up buffer, showing current pressure position "
-                f"({len(self._advisory_engine.rows)}/{self._advisory_engine.min_buffer_size}), "
-                f"energy={energy_type}, depth={depth_m:0.1f}m | Surface: {surface_status}."
+                "Advisory warming up: "
+                f"{len(self._advisory_engine.rows)}/{self._advisory_engine.min_buffer_size}."
             )
             return
         if not should_compute:
             self._update_advisory_current_marker(self._current_point_from_telemetry(telemetry_row))
+            last_recommendation = self._advisory_engine.get_recommendation()
+            if last_recommendation is not None:
+                self._set_advisory_status(
+                    current=self._current_point_from_telemetry(telemetry_row),
+                    recommended=last_recommendation["recommended"],
+                )
             return
         self._last_advisory_compute_energy_type = str(recommendation["energy_type"])
 
@@ -293,11 +289,19 @@ class Performance3DWidget(QWidget):
         self._update_advisory_markers(recommendation)
         current = recommendation["current"]
         recommended = recommendation["recommended"]
-        surface_status = self._surface_status_name(surface_source)
+        self._set_advisory_status(
+            current=current,
+            recommended=recommended,
+        )
+
+    def _set_advisory_status(
+        self,
+        current: dict,
+        recommended: dict,
+    ) -> None:
         self.status_label.setText(
-            f"Energy: {energy_type} | depth={depth_m:0.1f}m | Surface: {surface_status} | "
-            f"current p_ax={current['pressure_axis']:0.0f}, p_rot={current['pressure_rotation']:0.0f}, "
-            f"speed={current['speed']:0.4f} m/s | recommended p_ax={recommended['pressure_axis']:0.0f}, "
+            f"curr p_ax={current['pressure_axis']:0.0f}, p_rot={current['pressure_rotation']:0.0f}, "
+            f"speed={current['speed']:0.4f} m/s | rec p_ax={recommended['pressure_axis']:0.0f}, "
             f"p_rot={recommended['pressure_rotation']:0.0f} | uplift={recommended['predicted_uplift_pct']:+0.2f}% | "
             f"delta p_ax={recommended['delta_pressure_axis_pct']:+0.1f}% | "
             f"delta p_rot={recommended['delta_pressure_rotation_pct']:+0.1f}%."
@@ -395,8 +399,6 @@ class Performance3DWidget(QWidget):
         self._active_cluster_id = cluster_id
         self._segment_start_time_s = time_s
         self._segment_start_depth_m = depth_m
-        if self._graph_start_time_s is None:
-            self._graph_start_time_s = time_s
         if self._graph_start_depth_m is None:
             self._graph_start_depth_m = depth_m
 
@@ -1277,11 +1279,6 @@ class Performance3DWidget(QWidget):
             xs.append(float(depth_bin + bin_size / 2.0))
             ys.append(float(np.nanmedian(part)))
         return np.asarray(xs, dtype=float), np.asarray(ys, dtype=float)
-
-    def _surface_status_name(self, source: str | None) -> str:
-        if source == "notebook_plotly_surface":
-            return "notebook/canonical"
-        return "live advisory fallback"
 
     def _live_color(self) -> tuple[float, float, float, float]:
         colors = (
