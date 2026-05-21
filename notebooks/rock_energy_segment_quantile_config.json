@@ -1,7 +1,7 @@
 {
   "data_path": "../datasets/united.csv",
   "output_path": "united_rock_energy_segment_quantile.csv",
-  "final_method": "energy_type_segment_quantile",
+  "final_method": "energy_type_segment_quantile_weighted_residual",
   "segment_size": 60,
   "labels": [
     "soft_low_energy",
@@ -35,14 +35,29 @@
     "energy_input_proxy"
   ],
   "depth_column": "depth_m",
+  "expected_speed_prediction_mode_for_residual": "GroupKFold out-of-fold by well_id",
   "residual_model_metrics": {
-    "mae": 0.004749562337001684,
-    "rmse": 0.006027965208514162,
-    "r2": 0.17247647002681832
+    "holdout_unseen_wells": {
+      "mae": 0.004749562337001684,
+      "rmse": 0.006027965208514162,
+      "r2": 0.17247647002681832
+    },
+    "oof_by_well": {
+      "mae": 0.004712108386518148,
+      "rmse": 0.005987280648622429,
+      "r2": 0.18079808745904002
+    }
   },
+  "hardness_score_weights": {
+    "log_pseudo_mse": 0.5,
+    "drilling_efficiency": 0.35,
+    "formation_residual": 0.15
+  },
+  "hardness_score_formula": "0.50*z(log_pseudo_mse_roll_median_60) - 0.35*z(drilling_efficiency_roll_median_60) - 0.15*z(formation_residual_roll_median_60)",
   "interpretation": {
     "hardness_score_smooth": "continuous operational drilling resistance index",
     "rock_energy_type_final": "final discrete energy-response regime from segment-level quantile segmentation",
-    "pseudo_mse": "proxy energy per penetration, not physical MSE"
+    "pseudo_mse": "proxy energy per penetration, not physical MSE",
+    "formation_residual": "weak smoothed correction from OOF expected-speed baseline"
   }
 }

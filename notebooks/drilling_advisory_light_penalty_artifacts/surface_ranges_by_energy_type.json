@@ -1,42 +1,42 @@
 {
   "hard_high_energy": {
-    "pressure_axis_q05": 12308.0,
-    "pressure_axis_q95": 22608.5,
-    "pressure_rotation_q05": 9517.0,
-    "pressure_rotation_q95": 18801.0,
+    "pressure_axis_q05": 13164.0,
+    "pressure_axis_q95": 22758.6,
+    "pressure_rotation_q05": 9757.0,
+    "pressure_rotation_q95": 18831.0,
     "rotation_median": 103.41,
     "speed_median": 0.0060600000000199,
-    "hardness_median": 1.985664241928717,
-    "rows": 66791
+    "hardness_median": 0.6937244954631748,
+    "rows": 67269
   },
   "medium_high_energy": {
-    "pressure_axis_q05": 12951.45,
-    "pressure_axis_q95": 22566.0,
-    "pressure_rotation_q05": 9739.45,
-    "pressure_rotation_q95": 18747.550000000003,
-    "rotation_median": 102.966,
-    "speed_median": 0.0121199999999998,
-    "hardness_median": 0.7139423685165804,
-    "rows": 71070
+    "pressure_axis_q05": 13364.4,
+    "pressure_axis_q95": 22662.0,
+    "pressure_rotation_q05": 10049.0,
+    "pressure_rotation_q95": 18805.0,
+    "rotation_median": 102.864,
+    "speed_median": 0.0121199999999999,
+    "hardness_median": 0.2133290590486723,
+    "rows": 69849
   },
   "medium_low_energy": {
-    "pressure_axis_q05": 11549.15,
-    "pressure_axis_q95": 22525.0,
-    "pressure_rotation_q05": 9464.0,
-    "pressure_rotation_q95": 18946.0,
+    "pressure_axis_q05": 11576.0,
+    "pressure_axis_q95": 22436.09999999999,
+    "pressure_rotation_q05": 9498.9,
+    "pressure_rotation_q95": 19001.09999999999,
     "rotation_median": 102.966,
     "speed_median": 0.0121200000000001,
-    "hardness_median": -0.3416990116719327,
-    "rows": 69124
+    "hardness_median": -0.1252597577403837,
+    "rows": 69479
   },
   "soft_low_energy": {
-    "pressure_axis_q05": 8268.2,
-    "pressure_axis_q95": 21930.799999999996,
-    "pressure_rotation_q05": 8674.400000000001,
-    "pressure_rotation_q95": 18941.0,
+    "pressure_axis_q05": 7877.4000000000015,
+    "pressure_axis_q95": 21617.0,
+    "pressure_rotation_q05": 8512.0,
+    "pressure_rotation_q95": 18785.0,
     "rotation_median": 103.308,
     "speed_median": 0.0181799999999999,
-    "hardness_median": -2.1977956757191377,
-    "rows": 64805
+    "hardness_median": -0.7064367852484711,
+    "rows": 65193
   }
 }
