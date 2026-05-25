@@ -27,3 +27,9 @@ CHART_ROTATION_SMOOTHING_WINDOW = 9
 CHART_DEPTH_BIN_SIZE_M = 0.2
 CHART_UPDATE_STRIDE = 3
 ADVISORY_UPDATE_STRIDE = 10
+
+# Replay pacing. The timer is adapted per replay well so the downward drilling
+# pass stays close to 2-3 minutes without changing drilling values.
+PLAYBACK_TIMER_INTERVAL_MS = 120
+PLAYBACK_TARGET_WELL_DURATION_MS = 150_000
+SIMULATION_STEP_S = 0.04

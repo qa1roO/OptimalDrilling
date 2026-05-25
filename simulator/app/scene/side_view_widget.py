@@ -98,8 +98,6 @@ DRILLING_SPEED_TO_DEPTH_STEP = 3.0
 MIN_DEPTH_M = 20.0
 MAX_DEPTH_M = 40.0
 RETRACT_STEP_M = 0.12
-PLAYBACK_TIMER_INTERVAL_MS = 80
-SIMULATION_STEP_S = 0.04
 
 Z_GEOLOGY = -30.0
 Z_GEOLOGY_LABEL = -25.0
@@ -888,7 +886,7 @@ class SideViewWidget(QWidget):
 
     def _start_timer(self) -> None:
         self.timer = QTimer(self)
-        self.timer.setInterval(PLAYBACK_TIMER_INTERVAL_MS)
+        self.timer.setInterval(self._playback_timer_interval_ms())
         self.timer.timeout.connect(self._on_tick)
         self.timer.start()
 
@@ -1148,6 +1146,20 @@ class SideViewWidget(QWidget):
 
         self.region = f"Replay well {well_id}"
         self.layers = self._build_layers_from_replay_rows()
+        self._apply_playback_timer_interval()
+
+    def _apply_playback_timer_interval(self) -> None:
+        timer = getattr(self, "timer", None)
+        if timer is not None:
+            timer.setInterval(self._playback_timer_interval_ms())
+
+    def _playback_timer_interval_ms(self) -> int:
+        if not self._replay_rows:
+            return PLAYBACK_TIMER_INTERVAL_MS
+        return max(
+            PLAYBACK_TIMER_INTERVAL_MS,
+            round(PLAYBACK_TARGET_WELL_DURATION_MS / max(len(self._replay_rows), 1)),
+        )
 
     def _build_layers_from_replay_rows(self) -> list[RockLayer]:
         if not self._replay_rows:
