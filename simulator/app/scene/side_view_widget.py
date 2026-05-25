@@ -36,7 +36,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.config import PLAYBACK_TARGET_WELL_DURATION_MS, PLAYBACK_TIMER_INTERVAL_MS, SIMULATION_STEP_S
+from config import LABELED_DATA_PATH, RAW_DATA_PATH
+
 from .rock_layer_generator_stub import ENERGY_TYPE_TO_ID, RockLayer, generate_rock_layers
 
 # ---------- Геометрия сцены ----------
@@ -1334,7 +1335,7 @@ def _is_valid_replay_row(row: dict) -> bool:
 
 
 def _load_replay_depth_lookup() -> dict[tuple[str, str], str]:
-    path = Path(__file__).resolve().parents[3] / "datasets" / "united.csv"
+    path = RAW_DATA_PATH
     if not path.exists():
         return {}
 
@@ -1354,15 +1355,7 @@ def _load_replay_depth_lookup() -> dict[tuple[str, str], str]:
 
 
 def _replay_csv_path() -> Path:
-    repository_root = Path(__file__).resolve().parents[3]
-    candidate_paths = [
-        repository_root / "notebooks" / "united_rock_energy_segment_quantile.csv",
-        Path(__file__).resolve().parents[1] / "data" / "united_rock_energy_segment_quantile.csv",
-    ]
-    for path in candidate_paths:
-        if path.exists():
-            return path
-    return candidate_paths[0]
+    return LABELED_DATA_PATH
 
 
 def _to_float(value, default: float = 0.0) -> float:

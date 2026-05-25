@@ -7,13 +7,9 @@ from typing import Any
 
 import numpy as np
 
+from config import ENERGY_LABELS_4, PLOTLY_SURFACES_DIR
 
-ENERGY_TYPES = (
-    "soft_low_energy",
-    "medium_low_energy",
-    "medium_high_energy",
-    "hard_high_energy",
-)
+ENERGY_TYPES = tuple(ENERGY_LABELS_4)
 
 
 def load_notebook_surface(energy_type: str, repository_root: Path) -> dict[str, Any] | None:
@@ -44,11 +40,7 @@ def _find_surface_dir(repository_root: Path) -> Path | None:
 
 
 def _surface_candidate_dirs(repository_root: Path) -> list[Path]:
-    return [
-        repository_root / "notebooks" / "plotly_surfaces_html",
-        repository_root / "plotly_surfaces_html",
-        repository_root / "simulator" / "app" / "data" / "plotly_surfaces_html",
-    ]
+    return [PLOTLY_SURFACES_DIR]
 
 
 def _load_notebook_surface_from_dir(energy_type: str, surface_dir: Path) -> dict[str, Any] | None:

@@ -2,18 +2,15 @@ import csv
 import warnings
 from dataclasses import dataclass
 from functools import lru_cache
-from pathlib import Path
 
 import joblib
 import numpy as np
 import pandas as pd
 from sklearn.exceptions import InconsistentVersionWarning
 
+from config import DATASETS_DIR, SIMULATOR_DIR
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-SIMULATOR_ROOT = Path(__file__).resolve().parents[2]
-SIMULATOR_CORE_DIR = SIMULATOR_ROOT / "simulator_core"
-DATASETS_DIR = PROJECT_ROOT / "datasets"
+SIMULATOR_CORE_DIR = SIMULATOR_DIR / "simulator_core"
 DATASET_PATHS = (
     DATASETS_DIR / "dataset_1.csv",
     DATASETS_DIR / "dataset_2.csv",
