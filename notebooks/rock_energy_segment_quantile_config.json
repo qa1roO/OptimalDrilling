@@ -1,7 +1,7 @@
 {
   "method": "log_pseudo_mse_only_segment_quantile",
-  "input_path": "..\\datasets\\united.csv",
-  "output_path": "united_rock_energy_segment_quantile.csv",
+  "input_path": "C:\\Users\\qa1ro\\OneDrive\\Рабочий стол\\diploma\\OptimalDrilling\\datasets\\united.csv",
+  "output_path": "C:\\Users\\qa1ro\\OneDrive\\Рабочий стол\\diploma\\OptimalDrilling\\notebooks\\united_rock_energy_segment_quantile.csv",
   "segment_size": 60,
   "rolling_windows": [
     12,

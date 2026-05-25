@@ -1,5 +1,5 @@
 {
-  "data_path": "united_rock_energy_segment_quantile.csv",
+  "data_path": "C:\\Users\\qa1ro\\OneDrive\\Рабочий стол\\diploma\\OptimalDrilling\\notebooks\\united_rock_energy_segment_quantile.csv",
   "rock_energy_segmentation_expected_method": "energy_type_segment_quantile_log_pseudo_mse_only",
   "target_horizon": 5,
   "target_rotation": "target_rotation_near5",

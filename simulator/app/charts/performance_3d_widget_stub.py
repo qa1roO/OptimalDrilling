@@ -1,6 +1,5 @@
 import json
 import math
-from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
@@ -23,6 +22,7 @@ from app.config import (
     CHART_SPEED_SMOOTHING_WINDOW,
     CHART_UPDATE_STRIDE,
 )
+from config import PROJECT_ROOT, SIMULATOR_ADVISORY_ARTIFACT_DIR
 
 try:
     import numpy as np
@@ -555,13 +555,8 @@ class Performance3DWidget(QWidget):
         self._apply_fixed_chart_ranges()
 
     def _init_advisory_engine(self) -> None:
-        artifact_dir = (
-            Path(__file__).resolve().parents[1]
-            / "ml_artifacts"
-            / "drilling_advisory_light_penalty_artifacts"
-        )
-        repository_root = Path(__file__).resolve().parents[3]
-        self._notebook_surfaces = load_notebook_surfaces(repository_root)
+        artifact_dir = SIMULATOR_ADVISORY_ARTIFACT_DIR
+        self._notebook_surfaces = load_notebook_surfaces(PROJECT_ROOT)
         ranges_path = artifact_dir / "surface_ranges_by_energy_type.json"
         if ranges_path.exists():
             with ranges_path.open("r", encoding="utf-8") as file:
