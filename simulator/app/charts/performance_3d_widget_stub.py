@@ -58,7 +58,10 @@ class Performance3DWidget(QWidget):
         self._surface_segment_points: list[DrillingPoint] = []
         self._mode = "live"
         self._live_segment_index = 0
-        self.axis_description = "2D: depth/rotation + depth/speed. 3D: advisory pressure surface."
+        self.axis_description = (
+            "2D: depth/rotation + depth/speed. "
+            "3D: energy-type surface; white=actual operator, red=near_5 recommendation projected."
+        )
         self._cluster_profiles: dict[int, ClusterProfile] = {}
         self._active_profile: ClusterProfile | None = None
         self._active_cluster_id: int | None = None
@@ -245,7 +248,10 @@ class Performance3DWidget(QWidget):
             self._draw_advisory_preview_surface_if_needed(telemetry_row)
             self._update_advisory_preview_marker(telemetry_row)
             self.status_label.setText(
-                f"Advisory unavailable. {self._advisory_error or 'Check ML artifacts and dependencies.'}"
+                "Advisory unavailable: "
+                f"energy={self._current_surface_energy_type or 'unknown'}, "
+                f"surface={self._current_surface_source or 'none'}. "
+                f"{self._advisory_error or 'Check ML artifacts and dependencies.'}"
             )
             return
 
@@ -259,15 +265,19 @@ class Performance3DWidget(QWidget):
             self.speed_target_line.hide()
             self.status_label.setText(
                 "Advisory warming up: "
+                f"energy={energy_type}, surface={self._current_surface_source or 'none'}, "
                 f"{len(self._advisory_engine.rows)}/{self._advisory_engine.min_buffer_size}."
             )
             return
         if not should_compute:
-            self._update_advisory_current_marker(self._current_point_from_telemetry(telemetry_row))
+            current_from_telemetry = self._current_point_from_telemetry(telemetry_row)
+            self._update_advisory_current_marker(current_from_telemetry)
             last_recommendation = self._advisory_engine.get_recommendation()
             if last_recommendation is not None:
+                current_for_status = dict(last_recommendation["current"])
+                current_for_status.update(current_from_telemetry)
                 self._set_advisory_status(
-                    current=self._current_point_from_telemetry(telemetry_row),
+                    current=current_for_status,
                     recommended=last_recommendation["recommended"],
                 )
             return
@@ -299,10 +309,24 @@ class Performance3DWidget(QWidget):
         current: dict,
         recommended: dict,
     ) -> None:
+        actual_speed = _to_float(current.get("speed"), math.nan)
+        current_pred = _to_float(current.get("predicted_target_speed"), math.nan)
+        recommended_pred = _to_float(recommended.get("predicted_target_speed"), math.nan)
+        uplift = _to_float(recommended.get("predicted_uplift_pct"), math.nan)
+        energy_type = self._current_surface_energy_type or "unknown"
+        surface_source = self._current_surface_source or "none"
+
+        def fmt(value: float, precision: int = 4) -> str:
+            if not math.isfinite(value):
+                return "n/a"
+            return f"{value:0.{precision}f}"
+
         self.status_label.setText(
-            f"curr p_ax={current['pressure_axis']:0.0f}, p_rot={current['pressure_rotation']:0.0f}, "
-            f"speed={current['speed']:0.4f} m/s | rec p_ax={recommended['pressure_axis']:0.0f}, "
-            f"p_rot={recommended['pressure_rotation']:0.0f} | uplift={recommended['predicted_uplift_pct']:+0.2f}% | "
+            f"Advisory: energy={energy_type}, surface={surface_source}, "
+            f"actual speed={fmt(actual_speed)} m/s, "
+            f"near5 current={fmt(current_pred)}, near5 recommended={fmt(recommended_pred)}, "
+            f"uplift={fmt(uplift, precision=2)}% | "
+            f"rec p_ax={recommended['pressure_axis']:0.0f}, p_rot={recommended['pressure_rotation']:0.0f}, "
             f"delta p_ax={recommended['delta_pressure_axis_pct']:+0.1f}% | "
             f"delta p_rot={recommended['delta_pressure_rotation_pct']:+0.1f}%."
         )
@@ -666,6 +690,9 @@ class Performance3DWidget(QWidget):
             "x_axis": x_axis,
             "y_axis": y_axis,
             "z": z_values,
+            "pressure_axis": pressure_axis,
+            "pressure_rotation": pressure_rotation,
+            "raw_speed": speed,
         }
 
         surface_item = gl.GLSurfacePlotItem(
@@ -692,7 +719,7 @@ class Performance3DWidget(QWidget):
         if not self._advisory_surface_bounds:
             return
         self._update_advisory_current_marker(recommendation["current"])
-        recommended_pos = self._advisory_point_to_scene(recommendation["recommended"])
+        recommended_pos = self._controls_to_surface_scene_point(recommendation["recommended"])
         recommended_array = np.asarray([recommended_pos], dtype=float)
         self._append_recommended_trajectory_point(recommended_pos)
 
@@ -759,10 +786,20 @@ class Performance3DWidget(QWidget):
             yy / max(self.surface_size_y / 2, 1.0)
         )
         z_values = np.clip(z_values, 3.0, self.surface_height)
+        raw_pressure_axis = np.linspace(ranges["x_min"], ranges["x_max"], len(x_axis))
+        raw_pressure_rotation = np.linspace(ranges["y_min"], ranges["y_max"], len(y_axis))
+        pressure_axis_grid, pressure_rotation_grid = np.meshgrid(
+            raw_pressure_axis,
+            raw_pressure_rotation,
+            indexing="ij",
+        )
         self._advisory_surface_scene = {
             "x_axis": x_axis,
             "y_axis": y_axis,
             "z": z_values,
+            "pressure_axis": pressure_axis_grid,
+            "pressure_rotation": pressure_rotation_grid,
+            "raw_speed": z_values,
         }
 
         surface_item = gl.GLSurfacePlotItem(
@@ -1129,31 +1166,141 @@ class Performance3DWidget(QWidget):
         self._recommended_trajectory_line = None
         self._recommended_trajectory_points.clear()
 
+    def _interpolate_surface_z(self, scene_x: float, scene_y: float) -> float:
+        scene = self._advisory_surface_scene
+        x_axis = np.asarray(scene.get("x_axis", []), dtype=float)
+        y_axis = np.asarray(scene.get("y_axis", []), dtype=float)
+        z_grid = np.asarray(scene.get("z", []), dtype=float)
+
+        if x_axis.ndim != 1 or y_axis.ndim != 1 or z_grid.ndim != 2:
+            return 0.0
+        if z_grid.size == 0:
+            return 0.0
+        if len(x_axis) < 2 or len(y_axis) < 2:
+            return float(np.nanmedian(z_grid))
+
+        x = float(np.clip(scene_x, x_axis[0], x_axis[-1]))
+        y = float(np.clip(scene_y, y_axis[0], y_axis[-1]))
+
+        ix = int(np.searchsorted(x_axis, x) - 1)
+        iy = int(np.searchsorted(y_axis, y) - 1)
+        ix = int(np.clip(ix, 0, len(x_axis) - 2))
+        iy = int(np.clip(iy, 0, len(y_axis) - 2))
+
+        x0, x1 = float(x_axis[ix]), float(x_axis[ix + 1])
+        y0, y1 = float(y_axis[iy]), float(y_axis[iy + 1])
+        tx = 0.0 if abs(x1 - x0) < 1e-12 else (x - x0) / (x1 - x0)
+        ty = 0.0 if abs(y1 - y0) < 1e-12 else (y - y0) / (y1 - y0)
+
+        z00 = float(z_grid[ix, iy])
+        z10 = float(z_grid[ix + 1, iy])
+        z01 = float(z_grid[ix, iy + 1])
+        z11 = float(z_grid[ix + 1, iy + 1])
+        interpolated = float(
+            (1.0 - tx) * (1.0 - ty) * z00
+            + tx * (1.0 - ty) * z10
+            + (1.0 - tx) * ty * z01
+            + tx * ty * z11
+        )
+        if math.isfinite(interpolated):
+            return interpolated
+        return float(np.nanmedian(z_grid))
+
+    def _controls_to_surface_scene_point(
+        self,
+        point: dict,
+        lift: float = 2.8,
+    ) -> tuple[float, float, float]:
+        bounds = self._advisory_surface_bounds
+        scene = self._advisory_surface_scene
+        if not bounds or not scene:
+            return self._advisory_point_to_scene(point)
+
+        x_axis = np.asarray(scene.get("x_axis", []), dtype=float)
+        y_axis = np.asarray(scene.get("y_axis", []), dtype=float)
+        if x_axis.size < 2 or y_axis.size < 2:
+            return self._advisory_point_to_scene(point)
+
+        pressure_axis = _to_float(point.get("pressure_axis"), bounds["x_min"])
+        pressure_rotation = _to_float(point.get("pressure_rotation"), bounds["y_min"])
+
+        raw_x = float(np.clip(pressure_axis, bounds["x_min"], bounds["x_max"]))
+        raw_y = float(np.clip(pressure_rotation, bounds["y_min"], bounds["y_max"]))
+
+        scene_x = float(
+            np.interp(
+                raw_x,
+                [bounds["x_min"], bounds["x_max"]],
+                [float(x_axis[0]), float(x_axis[-1])],
+            )
+        )
+        scene_y = float(
+            np.interp(
+                raw_y,
+                [bounds["y_min"], bounds["y_max"]],
+                [float(y_axis[0]), float(y_axis[-1])],
+            )
+        )
+        scene_z = self._interpolate_surface_z(scene_x, scene_y) + lift
+        return scene_x, scene_y, scene_z
+
     def _advisory_point_to_scene(self, point: dict) -> tuple[float, float, float]:
         bounds = self._advisory_surface_bounds
+        if not bounds:
+            return (0.0, 0.0, self.surface_height * 0.5)
+
         pressure_axis = _clamp(
-            float(point["pressure_axis"]),
+            _to_float(point.get("pressure_axis"), bounds["x_min"]),
             bounds["x_min"],
             bounds["x_max"],
         )
         pressure_rotation = _clamp(
-            float(point["pressure_rotation"]),
+            _to_float(point.get("pressure_rotation"), bounds["y_min"]),
             bounds["y_min"],
             bounds["y_max"],
         )
-        x = _normalize_to_span(
-            pressure_axis,
-            bounds["x_min"],
-            bounds["x_max"],
-            self.surface_size_x,
-        )
-        y = _normalize_to_span(
-            pressure_rotation,
-            bounds["y_min"],
-            bounds["y_max"],
-            self.surface_size_y,
-        )
-        z = self._surface_scene_z_at(pressure_axis, pressure_rotation)
+
+        scene = self._advisory_surface_scene
+        x_axis = np.asarray(scene.get("x_axis", []), dtype=float) if scene else np.asarray([])
+        y_axis = np.asarray(scene.get("y_axis", []), dtype=float) if scene else np.asarray([])
+        if x_axis.size >= 2:
+            x = float(
+                np.interp(
+                    pressure_axis,
+                    [bounds["x_min"], bounds["x_max"]],
+                    [float(x_axis[0]), float(x_axis[-1])],
+                )
+            )
+        else:
+            x = _normalize_to_span(
+                pressure_axis,
+                bounds["x_min"],
+                bounds["x_max"],
+                self.surface_size_x,
+            )
+
+        if y_axis.size >= 2:
+            y = float(
+                np.interp(
+                    pressure_rotation,
+                    [bounds["y_min"], bounds["y_max"]],
+                    [float(y_axis[0]), float(y_axis[-1])],
+                )
+            )
+        else:
+            y = _normalize_to_span(
+                pressure_rotation,
+                bounds["y_min"],
+                bounds["y_max"],
+                self.surface_size_y,
+            )
+
+        speed = _to_float(point.get("speed", point.get("predicted_target_speed")), math.nan)
+        if math.isfinite(speed):
+            z = _normalize_to_height(speed, bounds["z_min"], bounds["z_max"], self.surface_height)
+            z = float(np.clip(z, 0.0, self.surface_height + 8.0))
+        else:
+            z = self._interpolate_surface_z(x, y)
         return (x, y, z + 5.0)
 
     def _surface_scene_z_at(self, pressure_axis: float, pressure_rotation: float) -> float:
