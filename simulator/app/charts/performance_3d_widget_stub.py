@@ -60,7 +60,8 @@ class Performance3DWidget(QWidget):
         self._live_segment_index = 0
         self.axis_description = (
             "2D: depth/rotation + depth/speed. "
-            "3D: energy-type surface; white=actual operator, red=near_5 recommendation projected."
+            "3D: empirical energy surface; white=operator controls projected, "
+            "red=near_5 recommendation projected."
         )
         self._cluster_profiles: dict[int, ClusterProfile] = {}
         self._active_profile: ClusterProfile | None = None
@@ -326,6 +327,7 @@ class Performance3DWidget(QWidget):
             f"actual speed={fmt(actual_speed)} m/s, "
             f"near5 current={fmt(current_pred)}, near5 recommended={fmt(recommended_pred)}, "
             f"uplift={fmt(uplift, precision=2)}% | "
+            "3D trails are projected controls | "
             f"rec p_ax={recommended['pressure_axis']:0.0f}, p_rot={recommended['pressure_rotation']:0.0f}, "
             f"delta p_ax={recommended['delta_pressure_axis_pct']:+0.1f}% | "
             f"delta p_rot={recommended['delta_pressure_rotation_pct']:+0.1f}%."
@@ -840,7 +842,7 @@ class Performance3DWidget(QWidget):
     def _update_advisory_current_marker(self, current_point: dict) -> None:
         if not self._advisory_surface_bounds:
             return
-        current_pos = self._advisory_point_to_scene(current_point)
+        current_pos = self._controls_to_surface_scene_point(current_point)
         current_array = np.asarray([current_pos], dtype=float)
         self._append_advisory_trajectory_point(current_pos)
         if self._advisory_current_marker is None:

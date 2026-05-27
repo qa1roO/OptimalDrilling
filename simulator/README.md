@@ -7,16 +7,18 @@ Desktop simulator for drilling replay and advisory-model visualization.
 The application starts from `run.py`, creates `SimulatorMainWindow`, and shows two panels:
 
 - `app/scene/side_view_widget.py` - rig side view, borehole animation, replay well selection, telemetry signals.
-- `app/charts/performance_3d_widget_stub.py` - performance dashboard with depth-based 2D plots and a 3D advisory surface.
+- `app/charts/performance_3d_widget_stub.py` - performance dashboard with depth-based 2D plots and a 3D empirical energy surface.
 
 The main runtime path is replay/advisory mode:
 
 1. `SideViewWidget` reads replay telemetry from `united_rock_energy_segment_quantile.csv` when it is available.
 2. It emits `replay_sample(row, depth_m)` while the rig animation advances.
-3. `Performance3DWidget.append_advisory_telemetry()` updates the 2D charts and the 3D pressure surface.
+3. `Performance3DWidget.append_advisory_telemetry()` updates the 2D charts and the 3D empirical pressure surface.
 4. `AdvisoryEngine` loads joblib/LightGBM artifacts from `app/ml_artifacts`.
 
 If replay telemetry is unavailable, the simulator can fall back to synthetic layer drilling and legacy cluster profiles from `simulator_core`.
+
+The 3D background surfaces are empirical binned-median surfaces built from factual rows inside each energy quantile. They are used only for visualization: white and red trajectories show projected controls on the current energy surface. Advisory recommendation values and uplift are computed separately by the near_5 LightGBM models.
 
 ## Run
 

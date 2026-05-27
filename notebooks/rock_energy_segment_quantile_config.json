@@ -9,17 +9,15 @@
     "medium_high_energy",
     "hard_high_energy"
   ],
-  "surface_features": [
-    "pressure_axis",
-    "pressure_rotation",
-    "rotation",
-    "hardness_score_smooth",
-    "pressure_balance",
-    "axis_over_rot_pressure",
-    "rot_pressure_over_axis",
-    "rotation_efficiency",
-    "energy_input_proxy"
+  "surface_method": "empirical_binned_median_surface",
+  "surface_target": "speed_roll_median_12",
+  "surface_grid_size": 60,
+  "surface_axis_quantile_range": [
+    0.05,
+    0.95
   ],
+  "surface_interpolation": "pandas linear interpolation over binned median grid",
+  "surface_report_path": "surface_empirical_report.csv",
   "depth_column": "depth_m",
   "hardness_score_formula": "zscore(log1p(pseudo_mse_roll_median_60))",
   "removed_from_hardness": [
@@ -34,6 +32,7 @@
   "interpretation": {
     "hardness_score_smooth": "continuous operational drilling resistance index based only on proxy energy per penetration",
     "rock_energy_type_final": "final discrete energy-response regime from segment-level quantile segmentation",
-    "pseudo_mse": "proxy energy per penetration, not physical MSE"
+    "pseudo_mse": "proxy energy per penetration, not physical MSE",
+    "plotly_surfaces": "empirical binned-median surfaces used only for 3D visualization"
   }
 }

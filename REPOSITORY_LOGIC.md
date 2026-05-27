@@ -279,6 +279,8 @@ self.speed_curve.setData(
 
 ## 9. Notebook-поверхности
 
+Текущая семантика поверхностей: фоновые 3D-поверхности строятся эмпирически по фактическим строкам внутри каждого уровня энергоёмкости. Пространство `pressure_axis x pressure_rotation` разбивается на ячейки, а высота задаётся медианной сглаженной скоростью в ячейке с интерполяцией пустых ячеек. Эти поверхности используются только для визуализации; рекомендации и uplift рассчитываются отдельно near_5 LightGBM-моделями.
+
 Финальные поверхности строятся в notebook:
 
 ```text
@@ -289,10 +291,10 @@ notebooks/rock_energy_segment_quantile_surfaces_only.ipynb
 
 ```text
 для каждого rock_energy_type_final:
-    обучить surrogate-модель внутри energy type
-    зафиксировать rotation и hardness_score_smooth медианами класса
+    взять фактические строки этого energy type
     построить сетку pressure_axis x pressure_rotation
-    предсказать speed
+    посчитать медианную сглаженную speed в каждой ячейке
+    заполнить пустые ячейки интерполяцией
     сохранить Plotly surface в HTML
 ```
 
