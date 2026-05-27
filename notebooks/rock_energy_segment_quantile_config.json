@@ -1,35 +1,50 @@
 {
-  "method": "log_pseudo_mse_only_segment_quantile",
-  "input_path": "C:\\Users\\qa1ro\\OneDrive\\Рабочий стол\\diploma\\OptimalDrilling\\datasets\\united.csv",
-  "output_path": "C:\\Users\\qa1ro\\OneDrive\\Рабочий стол\\diploma\\OptimalDrilling\\notebooks\\united_rock_energy_segment_quantile.csv",
+  "data_path": "../datasets/united.csv",
+  "output_path": "united_rock_energy_segment_quantile.csv",
+  "final_method": "energy_type_segment_quantile_log_pseudo_mse_only",
   "segment_size": 60,
-  "rolling_windows": [
-    12,
-    30,
-    60
-  ],
-  "rolling_min_periods": "max(3, window // 3)",
-  "energy_labels_4": [
+  "labels": [
     "soft_low_energy",
     "medium_low_energy",
     "medium_high_energy",
     "hard_high_energy"
   ],
-  "hardness_score": "zscore(log_pseudo_mse)",
-  "hardness_score_smooth": "zscore(log1p(pseudo_mse_roll_median_60))",
-  "surface_features": [
-    "pressure_axis",
-    "pressure_rotation",
-    "rotation",
-    "hardness_score_smooth",
-    "pressure_balance",
-    "rotation_efficiency",
-    "energy_input_proxy"
+  "surface_method": "smoothed_empirical_binned_median_surface",
+  "surface_target": "per-energy first available candidate",
+  "surface_target_candidates": [
+    "speed_roll_median_30",
+    "speed_roll_mean_30",
+    "speed_roll_median_12",
+    "speed"
   ],
-  "removed_from_hardness_score": [
+  "surface_grid_size": 40,
+  "surface_min_bin_count": 5,
+  "surface_smooth_sigma": 1.6,
+  "surface_z_clip_quantiles": [
+    0.02,
+    0.98
+  ],
+  "surface_axis_quantiles": [
+    0.05,
+    0.95
+  ],
+  "surface_interpolation": "pandas linear interpolation followed by weighted gaussian smoothing over binned median grid",
+  "surface_report_path": "rock_energy_segment_reports\\surface_empirical_report.csv",
+  "depth_column": "depth_m",
+  "hardness_score_formula": "zscore(log1p(pseudo_mse_roll_median_60))",
+  "removed_from_hardness": [
     "expected_speed_from_controls",
     "formation_residual",
     "relative_formation_residual",
     "drilling_efficiency"
-  ]
+  ],
+  "diagnostic_columns": {
+    "drilling_efficiency": "kept only for validation/summary because it is inverse to pseudo_mse"
+  },
+  "interpretation": {
+    "hardness_score_smooth": "continuous operational drilling resistance index based only on proxy energy per penetration",
+    "rock_energy_type_final": "final discrete energy-response regime from segment-level quantile segmentation",
+    "pseudo_mse": "proxy energy per penetration, not physical MSE",
+    "plotly_surfaces": "smoothed empirical binned-median surfaces used only for 3D visualization"
+  }
 }
