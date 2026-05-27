@@ -279,12 +279,12 @@ self.speed_curve.setData(
 
 ## 9. Notebook-поверхности
 
-Текущая семантика поверхностей: фоновые 3D-поверхности строятся эмпирически по фактическим строкам внутри каждого уровня энергоёмкости. Пространство `pressure_axis x pressure_rotation` разбивается на ячейки, а высота задаётся медианной сглаженной скоростью в ячейке с интерполяцией пустых ячеек. Эти поверхности используются только для визуализации; рекомендации и uplift рассчитываются отдельно near_5 LightGBM-моделями.
+Текущая семантика поверхностей: фоновые 3D-поверхности строятся эмпирически по фактическим строкам внутри каждого уровня энергоёмкости. Пространство `pressure_axis x pressure_rotation` разбивается на ячейки, высота задаётся медианной сглаженной скоростью в ячейке, ячейки с малым числом наблюдений считаются ненадёжными, заполняются интерполяцией и затем поверхность сглаживается взвешенным 2D Gaussian-фильтром. Эти поверхности используются только для визуализации; рекомендации и uplift рассчитываются отдельно near_5 LightGBM-моделями.
 
-Финальные поверхности строятся в notebook:
+Финальные поверхности регенерируются в notebook:
 
 ```text
-notebooks/rock_energy_segment_quantile_surfaces_only.ipynb
+notebooks/rock_energy_segment.ipynb
 ```
 
 Логика notebook:
@@ -292,10 +292,18 @@ notebooks/rock_energy_segment_quantile_surfaces_only.ipynb
 ```text
 для каждого rock_energy_type_final:
     взять фактические строки этого energy type
+    выбрать surface target из speed_roll_median_30, speed_roll_mean_30, speed_roll_median_12, speed
     построить сетку pressure_axis x pressure_rotation
-    посчитать медианную сглаженную speed в каждой ячейке
-    заполнить пустые ячейки интерполяцией
+    посчитать median speed target и count в каждой ячейке
+    убрать low-support ячейки, заполнить пропуски интерполяцией
+    сгладить поверхность weighted 2D Gaussian filter
     сохранить Plotly surface в HTML
+```
+
+Диагностический отчёт по заполненности, clipping и диапазонам сохраняется в:
+
+```text
+notebooks/rock_energy_segment_reports/surface_empirical_report.csv
 ```
 
 HTML-файлы:

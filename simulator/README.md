@@ -18,7 +18,7 @@ The main runtime path is replay/advisory mode:
 
 If replay telemetry is unavailable, the simulator can fall back to synthetic layer drilling and legacy cluster profiles from `simulator_core`.
 
-The 3D background surfaces are empirical binned-median surfaces built from factual rows inside each energy quantile. They are used only for visualization: white and red trajectories show projected controls on the current energy surface. Advisory recommendation values and uplift are computed separately by the near_5 LightGBM models.
+The 3D background surfaces are smoothed empirical binned-median surfaces built from factual rows inside each energy quantile. Low-support bins are treated as missing, interpolated, and smoothed with a weighted 2D Gaussian filter. They are used only for visualization: white and red trajectories show projected controls on the current energy surface. Advisory recommendation values and uplift are computed separately by the near_5 LightGBM models.
 
 ## Run
 

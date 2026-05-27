@@ -60,8 +60,8 @@ class Performance3DWidget(QWidget):
         self._live_segment_index = 0
         self.axis_description = (
             "2D: depth/rotation + depth/speed. "
-            "3D: empirical energy surface; white=operator controls projected, "
-            "red=near_5 recommendation projected."
+            "3D: empirical energy surface; white=operator controls projected; "
+            "red=near5 recommendation projected."
         )
         self._cluster_profiles: dict[int, ClusterProfile] = {}
         self._active_profile: ClusterProfile | None = None
