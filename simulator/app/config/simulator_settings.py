@@ -30,6 +30,6 @@ ADVISORY_UPDATE_STRIDE = 10
 
 # Replay pacing. The timer is adapted per replay well so the downward drilling
 # pass stays close to 2-3 minutes without changing drilling values.
-PLAYBACK_TIMER_INTERVAL_MS = 120
+PLAYBACK_TIMER_INTERVAL_MS = 10
 PLAYBACK_TARGET_WELL_DURATION_MS = 150_000
 SIMULATION_STEP_S = 0.04
