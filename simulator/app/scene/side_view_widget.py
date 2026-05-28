@@ -36,6 +36,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.config import PLAYBACK_TARGET_WELL_DURATION_MS, PLAYBACK_TIMER_INTERVAL_MS, SIMULATION_STEP_S
 from config import LABELED_DATA_PATH, RAW_DATA_PATH
 
 from .rock_layer_generator_stub import ENERGY_TYPE_TO_ID, RockLayer, generate_rock_layers
