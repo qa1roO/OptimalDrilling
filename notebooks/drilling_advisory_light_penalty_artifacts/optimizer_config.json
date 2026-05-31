@@ -6,6 +6,13 @@
   "boundary_penalty_weight": 0.02,
   "boundary_start": 0.85,
   "score_formula": "pred_target_speed - change_penalty - boundary_penalty",
+  "uplift_formula_model_based": "100 * (recommended_predicted_target_speed / current_predicted_target_speed - 1)",
+  "predicted_regret_vs_operator_formula": "100 * (recommended_predicted_target_speed / actual_operator_target_speed_near5 - 1)",
+  "recommended_win_vs_operator_formula": "recommended_predicted_target_speed > actual_operator_target_speed_near5 * (1 + margin)",
+  "current_prediction_error_formula": "100 * (current_predicted_target_speed / actual_operator_target_speed_near5 - 1)",
+  "bias_adjusted_regret_formula": "predicted_regret_vs_operator_pct - current_prediction_error_vs_operator_pct",
+  "direction_agreement_formula": "sign(recommended_delta_pressure_pct) == sign(operator_future_delta_pressure_pct), with a 0.5 pp deadband",
+  "operator_comparison_interpretation": "offline counterfactual diagnostics; not a measured causal effect because the recommendation was not actually applied",
   "use_local_reachable_bounds": true,
   "use_energy_type_quantile_bounds": true
 }

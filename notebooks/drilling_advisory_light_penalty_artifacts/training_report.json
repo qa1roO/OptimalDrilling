@@ -7,7 +7,7 @@
     "R2": 0.8172769637719016
   },
   "speed_model_oracle_rotation_near5": {
-    "MAE": 0.0019392085621642468,
+    "MAE": 0.0019392085621642466,
     "RMSE": 0.002626100319487699,
     "R2": 0.7541302757810525
   },
@@ -19,7 +19,7 @@
   "baseline_compare": [
     {
       "model": "speed_oracle_rotation_near5",
-      "MAE": 0.0019392085621642468,
+      "MAE": 0.0019392085621642466,
       "RMSE": 0.002626100319487699,
       "R2": 0.7541302757810525
     },
@@ -51,10 +51,34 @@
       "p05_uplift_pct": 0.14637693340121993,
       "p95_uplift_pct": 8.118031592152684,
       "median_score_uplift_pct": 1.8334319689612633,
+      "median_predicted_regret_vs_operator_pct": 4.670561738718559,
+      "mean_predicted_regret_vs_operator_pct": 7.9308033349395615,
+      "p05_predicted_regret_vs_operator_pct": -24.28494339001096,
+      "p25_predicted_regret_vs_operator_pct": -7.612300026434008,
+      "p75_predicted_regret_vs_operator_pct": 19.771873141295902,
+      "p95_predicted_regret_vs_operator_pct": 50.22772935808997,
+      "recommended_win_vs_operator_rate": 0.6012,
+      "recommended_win_vs_operator_2pct_rate": 0.5584,
+      "recommended_win_vs_operator_5pct_rate": 0.4912,
+      "median_uplift_vs_actual_pct": 4.670561738718559,
+      "mean_uplift_vs_actual_pct": 7.9308033349395615,
+      "share_recommended_pred_above_actual": 0.6012,
+      "median_current_prediction_error_vs_operator_pct": 1.6959468488773166,
+      "mean_current_prediction_error_vs_operator_pct": 4.850873867273599,
+      "p05_current_prediction_error_vs_operator_pct": -26.695158853472154,
+      "p95_current_prediction_error_vs_operator_pct": 45.46443038480041,
+      "share_current_pred_above_operator": 0.54,
+      "median_bias_adjusted_regret_vs_operator_pct": 2.2868451855906526,
+      "mean_bias_adjusted_regret_vs_operator_pct": 3.0799294676659636,
+      "same_direction_axis_rate": 0.09095022624434389,
+      "same_direction_rotation_rate": 0.4895833333333333,
+      "same_direction_both_rate": 0.0988,
       "median_delta_axis_pct": -1.2917444891513696e-11,
       "median_delta_rot_pct": 5.599999999992433,
       "median_abs_delta_axis_pct": 3.199999999994274,
       "median_abs_delta_rot_pct": 5.599999999993244,
+      "median_operator_delta_axis_pct": 0.03351141746729125,
+      "median_operator_delta_rot_pct": 0.6906594703030455,
       "axis_boundary_ratio": 0.0084,
       "rot_boundary_ratio": 0.0336,
       "any_boundary_ratio": 0.0404
@@ -68,10 +92,23 @@
       "mean_uplift_pct": 4.766701960631361,
       "p05_uplift_pct": 0.8204501991276448,
       "p95_uplift_pct": 10.835768817845352,
+      "median_predicted_regret_vs_operator_pct": 8.233789236849898,
+      "mean_predicted_regret_vs_operator_pct": 11.842244080418865,
+      "p05_predicted_regret_vs_operator_pct": -23.72960701786992,
+      "p95_predicted_regret_vs_operator_pct": 60.144317569841895,
+      "recommended_win_vs_operator_rate": 0.6549618320610687,
+      "recommended_win_vs_operator_2pct_rate": 0.6183206106870229,
+      "recommended_win_vs_operator_5pct_rate": 0.5709923664122137,
+      "median_current_prediction_error_vs_operator_pct": 3.6345939633664504,
+      "mean_current_prediction_error_vs_operator_pct": 6.769385753975089,
+      "median_bias_adjusted_regret_vs_operator_pct": 4.141264862593717,
+      "share_current_pred_above_operator": 0.5541984732824428,
       "median_delta_axis_pct": -0.8000000000055185,
       "median_delta_rot_pct": 6.3999999999931445,
       "median_abs_delta_axis_pct": 3.9999999999946523,
       "median_abs_delta_rot_pct": 6.3999999999932555,
+      "median_operator_delta_axis_pct": 0.02688795141161382,
+      "median_operator_delta_rot_pct": 0.8629481446535747,
       "boundary_ratio": 0.07022900763358779
     },
     {
@@ -81,10 +118,23 @@
       "mean_uplift_pct": 3.2520617129449922,
       "p05_uplift_pct": 0.48258428063955866,
       "p95_uplift_pct": 7.804981121596352,
+      "median_predicted_regret_vs_operator_pct": 5.439126245120729,
+      "mean_predicted_regret_vs_operator_pct": 8.300654011857553,
+      "p05_predicted_regret_vs_operator_pct": -22.76973881190706,
+      "p95_predicted_regret_vs_operator_pct": 44.93305218445058,
+      "recommended_win_vs_operator_rate": 0.6335616438356164,
+      "recommended_win_vs_operator_2pct_rate": 0.5856164383561644,
+      "recommended_win_vs_operator_5pct_rate": 0.5068493150684932,
+      "median_current_prediction_error_vs_operator_pct": 2.326806265827941,
+      "mean_current_prediction_error_vs_operator_pct": 4.923690099577952,
+      "median_bias_adjusted_regret_vs_operator_pct": 2.8118297353539727,
+      "share_current_pred_above_operator": 0.5667808219178082,
       "median_delta_axis_pct": -0.8422326693255711,
       "median_delta_rot_pct": 6.399999999992856,
       "median_abs_delta_axis_pct": 2.559984737682941,
       "median_abs_delta_rot_pct": 6.399999999992878,
+      "median_operator_delta_axis_pct": 0.019618359901929505,
+      "median_operator_delta_rot_pct": -0.1372959431065801,
       "boundary_ratio": 0.046232876712328765
     },
     {
@@ -94,10 +144,23 @@
       "mean_uplift_pct": 2.1372160579314667,
       "p05_uplift_pct": 0.1339374121271497,
       "p95_uplift_pct": 5.853814816815661,
+      "median_predicted_regret_vs_operator_pct": 2.848347690844011,
+      "mean_predicted_regret_vs_operator_pct": 5.207846110184279,
+      "p05_predicted_regret_vs_operator_pct": -25.309827270565943,
+      "p95_predicted_regret_vs_operator_pct": 41.62889167756303,
+      "recommended_win_vs_operator_rate": 0.5642965204236006,
+      "recommended_win_vs_operator_2pct_rate": 0.518910741301059,
+      "recommended_win_vs_operator_5pct_rate": 0.4402420574886536,
+      "median_current_prediction_error_vs_operator_pct": 0.9650710085581826,
+      "mean_current_prediction_error_vs_operator_pct": 3.0308157400475038,
+      "median_bias_adjusted_regret_vs_operator_pct": 1.6637991613709158,
+      "share_current_pred_above_operator": 0.5219364599092284,
       "median_delta_axis_pct": -6.505906924303417e-12,
       "median_delta_rot_pct": 5.599999999991678,
       "median_abs_delta_axis_pct": 2.400000000004887,
       "median_abs_delta_rot_pct": 5.599999999992389,
+      "median_operator_delta_axis_pct": 0.034933715509666285,
+      "median_operator_delta_rot_pct": 0.7099361354447664,
       "boundary_ratio": 0.030257186081694403
     },
     {
@@ -107,11 +170,126 @@
       "mean_uplift_pct": 1.5191063770835695,
       "p05_uplift_pct": 0.03785769464647816,
       "p95_uplift_pct": 4.552722255955395,
+      "median_predicted_regret_vs_operator_pct": 2.574363353260245,
+      "mean_predicted_regret_vs_operator_pct": 6.300617071529882,
+      "p05_predicted_regret_vs_operator_pct": -25.895372679156154,
+      "p95_predicted_regret_vs_operator_pct": 51.54064494125413,
+      "recommended_win_vs_operator_rate": 0.5516666666666666,
+      "recommended_win_vs_operator_2pct_rate": 0.51,
+      "recommended_win_vs_operator_5pct_rate": 0.445,
+      "median_current_prediction_error_vs_operator_pct": 0.881015237527083,
+      "mean_current_prediction_error_vs_operator_pct": 4.690721295008982,
+      "median_bias_adjusted_regret_vs_operator_pct": 0.9931645060262064,
+      "share_current_pred_above_operator": 0.5183333333333333,
       "median_delta_axis_pct": 1.5999999999882553,
       "median_delta_rot_pct": 0.7999999999930285,
       "median_abs_delta_axis_pct": 3.1999999999944295,
       "median_abs_delta_rot_pct": 2.452803786185853,
+      "median_operator_delta_axis_pct": 0.06341095004265274,
+      "median_operator_delta_rot_pct": 1.3819417869469053,
       "boundary_ratio": 0.013333333333333334
+    }
+  ],
+  "operator_comparison_summary": [
+    {
+      "metric": "model_based_uplift_pct = recommended_pred / current_pred - 1",
+      "median": 2.2441683604697227,
+      "mean": 2.9382229860465037,
+      "p05": 0.14637693340121993,
+      "p25": 0.9890800626559504,
+      "p75": 4.0704816389581016,
+      "p95": 8.118031592152684
+    },
+    {
+      "metric": "predicted_regret_vs_operator_pct = recommended_pred / actual_operator_near5 - 1",
+      "median": 4.670561738718559,
+      "mean": 7.9308033349395615,
+      "p05": -24.28494339001096,
+      "p25": -7.612300026434008,
+      "p75": 19.771873141295902,
+      "p95": 50.22772935808997
+    },
+    {
+      "metric": "current_prediction_error_vs_operator_pct = current_pred / actual_operator_near5 - 1",
+      "median": 1.6959468488773166,
+      "mean": 4.850873867273599,
+      "p05": -26.695158853472154,
+      "p25": -9.88411324450185,
+      "p75": 16.433539027763295,
+      "p95": 45.46443038480041
+    },
+    {
+      "metric": "bias_adjusted_regret_vs_operator_pct = regret_vs_operator - current_prediction_error",
+      "median": 2.2868451855906526,
+      "mean": 3.0799294676659636,
+      "p05": 0.14771027181557345,
+      "p25": 1.0093706668989346,
+      "p75": 4.212935396537735,
+      "p95": 8.858350511007771
+    }
+  ],
+  "win_rate_summary": [
+    {
+      "metric": "recommended_win_vs_operator_rate",
+      "value": 0.6012
+    },
+    {
+      "metric": "recommended_win_vs_operator_2pct_rate",
+      "value": 0.5584
+    },
+    {
+      "metric": "recommended_win_vs_operator_5pct_rate",
+      "value": 0.4912
+    },
+    {
+      "metric": "same_direction_axis_rate",
+      "value": 0.09095022624434389
+    },
+    {
+      "metric": "same_direction_rotation_rate",
+      "value": 0.4895833333333333
+    },
+    {
+      "metric": "same_direction_both_rate",
+      "value": 0.0988
+    }
+  ],
+  "uplift_compare": [
+    {
+      "metric": "model_based_uplift_pct = recommended_pred / current_pred - 1",
+      "median": 2.2441683604697227,
+      "mean": 2.9382229860465037,
+      "p05": 0.14637693340121993,
+      "p25": 0.9890800626559504,
+      "p75": 4.0704816389581016,
+      "p95": 8.118031592152684
+    },
+    {
+      "metric": "predicted_regret_vs_operator_pct = recommended_pred / actual_operator_near5 - 1",
+      "median": 4.670561738718559,
+      "mean": 7.9308033349395615,
+      "p05": -24.28494339001096,
+      "p25": -7.612300026434008,
+      "p75": 19.771873141295902,
+      "p95": 50.22772935808997
+    },
+    {
+      "metric": "current_prediction_error_vs_operator_pct = current_pred / actual_operator_near5 - 1",
+      "median": 1.6959468488773166,
+      "mean": 4.850873867273599,
+      "p05": -26.695158853472154,
+      "p25": -9.88411324450185,
+      "p75": 16.433539027763295,
+      "p95": 45.46443038480041
+    },
+    {
+      "metric": "bias_adjusted_regret_vs_operator_pct = regret_vs_operator - current_prediction_error",
+      "median": 2.2868451855906526,
+      "mean": 3.0799294676659636,
+      "p05": 0.14771027181557345,
+      "p25": 1.0093706668989346,
+      "p75": 4.212935396537735,
+      "p95": 8.858350511007771
     }
   ],
   "final_optimizer_mode": "light_penalty",

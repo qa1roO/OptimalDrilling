@@ -1,9 +1,11 @@
 {
-  "data_path": "C:\\Users\\qa1ro\\OneDrive\\Рабочий стол\\diploma\\OptimalDrilling\\notebooks\\united_rock_energy_segment_quantile.csv",
+  "data_path": "/home/alex/Desktop/OptimalDrilling/notebooks/united_rock_energy_segment_quantile.csv",
   "rock_energy_segmentation_expected_method": "energy_type_segment_quantile_log_pseudo_mse_only",
   "target_horizon": 5,
   "target_rotation": "target_rotation_near5",
   "target_speed": "target_speed_near5",
+  "operator_comparison_target_pressure_axis": "target_pressure_axis_near5",
+  "operator_comparison_target_pressure_rotation": "target_pressure_rotation_near5",
   "numeric_features": [
     "pressure_axis",
     "pressure_rotation",
