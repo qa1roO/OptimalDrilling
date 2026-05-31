@@ -32,6 +32,9 @@ from PySide6.QtWidgets import (
     QGraphicsLineItem,
     QGraphicsPathItem,
     QGraphicsRectItem,
+    QHBoxLayout,
+    QLabel,
+    QSlider,
     QVBoxLayout,
     QWidget,
 )
@@ -165,6 +168,7 @@ class SideViewWidget(QWidget):
         self._replay_depth_end = 0.0
         self._replay_depth_span = 0.0
         self._replay_depth_scale = 1.0
+        self._playback_target_well_duration_ms = PLAYBACK_TARGET_WELL_DURATION_MS
         self._select_replay_well(advance=False)
         if not self._replay_rows:
             self.region, self.layers = generate_rock_layers()
@@ -198,6 +202,66 @@ class SideViewWidget(QWidget):
         self._draw_bit()              # 5. долото (самый верх)
         self._draw_depth_indicator()
         self._draw_labels()
+        self._build_playback_controls(layout)
+
+    def _build_playback_controls(self, layout: QVBoxLayout) -> None:
+        controls = QWidget(self)
+        controls.setStyleSheet(
+            """
+            QWidget {
+                background: #0c121a;
+                color: #c8d2dc;
+                font-size: 12px;
+            }
+            QLabel#PlaybackCaption {
+                color: #8fa1b6;
+                font-weight: 600;
+            }
+            QLabel#PlaybackValue {
+                color: #dce6f1;
+                min-width: 76px;
+            }
+            QSlider::groove:horizontal {
+                height: 4px;
+                background: #243244;
+                border-radius: 2px;
+            }
+            QSlider::sub-page:horizontal {
+                background: #7c3aed;
+                border-radius: 2px;
+            }
+            QSlider::handle:horizontal {
+                width: 14px;
+                margin: -5px 0;
+                background: #ff4fd8;
+                border: 1px solid #ffc4f1;
+                border-radius: 7px;
+            }
+            """
+        )
+        controls_layout = QHBoxLayout(controls)
+        controls_layout.setContentsMargins(10, 6, 10, 8)
+        controls_layout.setSpacing(10)
+
+        caption = QLabel("Render speed", controls)
+        caption.setObjectName("PlaybackCaption")
+
+        self.playback_slider = QSlider(Qt.Orientation.Horizontal, controls)
+        self.playback_slider.setRange(60, 300)
+        self.playback_slider.setSingleStep(10)
+        self.playback_slider.setPageStep(30)
+        self.playback_slider.setValue(round(self._playback_target_well_duration_ms / 1000))
+        self.playback_slider.setToolTip("Target time for one well pass")
+        self.playback_slider.valueChanged.connect(self._on_playback_duration_changed)
+
+        self.playback_duration_label = QLabel(controls)
+        self.playback_duration_label.setObjectName("PlaybackValue")
+        self._update_playback_duration_label()
+
+        controls_layout.addWidget(caption)
+        controls_layout.addWidget(self.playback_slider, 1)
+        controls_layout.addWidget(self.playback_duration_label)
+        layout.addWidget(controls)
 
     # ------------------------------------------------------------------ Геология
 
@@ -1159,8 +1223,20 @@ class SideViewWidget(QWidget):
             return PLAYBACK_TIMER_INTERVAL_MS
         return max(
             PLAYBACK_TIMER_INTERVAL_MS,
-            round(PLAYBACK_TARGET_WELL_DURATION_MS / max(len(self._replay_rows), 1)),
+            round(self._playback_target_well_duration_ms / max(len(self._replay_rows), 1)),
         )
+
+    def _on_playback_duration_changed(self, value_s: int) -> None:
+        self._playback_target_well_duration_ms = int(value_s) * 1000
+        self._update_playback_duration_label()
+        self._apply_playback_timer_interval()
+
+    def _update_playback_duration_label(self) -> None:
+        label = getattr(self, "playback_duration_label", None)
+        if label is None:
+            return
+        duration_s = round(self._playback_target_well_duration_ms / 1000)
+        label.setText(f"{duration_s // 60}:{duration_s % 60:02d}")
 
     def _build_layers_from_replay_rows(self) -> list[RockLayer]:
         if not self._replay_rows:
