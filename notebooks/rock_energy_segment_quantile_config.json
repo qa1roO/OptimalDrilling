@@ -35,7 +35,7 @@
     0.95
   ],
   "surface_interpolation": "pandas linear interpolation followed by weighted gaussian smoothing over binned median grid",
-  "surface_report_path": "rock_energy_segment_reports/surface_empirical_report.csv",
+  "surface_report_path": "rock_energy_segment_reports\\surface_empirical_report.csv",
   "depth_column": "depth_m",
   "interpretation": {
     "hardness_score_smooth": "stable operational drilling resistance index based on smoothed log-pseudo-MSE",
