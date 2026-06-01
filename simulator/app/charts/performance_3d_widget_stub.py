@@ -1140,7 +1140,7 @@ class Performance3DWidget(QWidget):
         if self._recommended_trajectory_line is None:
             self._recommended_trajectory_line = gl.GLLinePlotItem(
                 pos=data,
-                color=(1.0, 0.18, 0.12, 0.82),
+                color=(1.0, 0.16, 0.82, 0.92),
                 width=2,
                 antialias=True,
                 mode="line_strip",
