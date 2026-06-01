@@ -1,8 +1,6 @@
 {
   "optimizer_mode": "light_penalty",
   "target_horizons": [
-    1,
-    3,
     5
   ],
   "default_horizon": 5,

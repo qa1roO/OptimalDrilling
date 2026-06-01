@@ -12,8 +12,8 @@
   "hardness_features": [
     "hardness_score_smooth"
   ],
-  "hardness_base_signal": "log_pseudo_mse_roll_median_60",
-  "hardness_formula": "zscore(log_pseudo_mse_roll_median_60)",
+  "hardness_base_signal": "log_pseudo_mse_roll_median_30",
+  "hardness_formula": "zscore(log_pseudo_mse_roll_median_30)",
   "energy_quantile_source": "hardness_score_smooth segment median",
   "surface_method": "smoothed_empirical_binned_median_surface",
   "surface_target": "per-energy first available candidate",
