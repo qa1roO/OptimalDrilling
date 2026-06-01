@@ -11,7 +11,7 @@ from app.data import (
     DrillingPoint,
     load_cluster_profiles,
 )
-from app.data.notebook_surfaces import load_notebook_surfaces
+from app.data.notebook_surfaces import load_global_speed_surface
 from app.config import (
     ADVISORY_UPDATE_STRIDE,
     CHART_DEPTH_AXIS_MAX_M,
@@ -60,7 +60,7 @@ class Performance3DWidget(QWidget):
         self._live_segment_index = 0
         self.axis_description = (
             "2D: depth/rotation + depth/speed. "
-            "3D: empirical energy surface; white=operator controls projected; "
+            "3D: global speed response surface; white=operator controls projected; "
             "red=near5 recommendation projected."
         )
         self._cluster_profiles: dict[int, ClusterProfile] = {}
@@ -86,10 +86,9 @@ class Performance3DWidget(QWidget):
         self._speed_span = 0.035
         self._advisory_engine: AdvisoryEngine | None = None
         self._advisory_error = ""
-        self._current_surface_energy_type: str | None = None
+        self._current_energy_type: str | None = None
         self._current_surface_source: str | None = None
-        self._cached_surface_by_energy_type: dict[str, dict] = {}
-        self._notebook_surfaces: dict[str, dict] = {}
+        self._global_speed_surface: dict | None = None
         self._advisory_surface_bounds: dict[str, float] = {}
         self._advisory_surface_scene: dict[str, object] = {}
         self._advisory_surface_ranges: dict[str, dict[str, float]] = {}
@@ -147,9 +146,8 @@ class Performance3DWidget(QWidget):
         self._active_speed_target = None
         self._active_rotation_transition_depth_m = self._transition_depth_m
         self._previous_rotation_drop_rpm = 0.0
-        self._current_surface_energy_type = None
+        self._current_energy_type = None
         self._current_surface_source = None
-        self._cached_surface_by_energy_type.clear()
         self._advisory_surface_bounds.clear()
         self._advisory_surface_scene.clear()
         self._advisory_trajectory_points.clear()
@@ -240,6 +238,7 @@ class Performance3DWidget(QWidget):
             source="replay",
             cluster_id=_energy_type_id(str(telemetry_row.get("rock_energy_type_final", ""))),
         )
+        self._current_energy_type = str(telemetry_row.get("rock_energy_type_final", "unknown"))
         self._live_points.append(point)
         self._live_depths_m.append(depth_m)
         self._surface_segment_points.append(point)
@@ -250,7 +249,7 @@ class Performance3DWidget(QWidget):
             self._update_advisory_preview_marker(telemetry_row)
             self.status_label.setText(
                 "Advisory unavailable: "
-                f"energy={self._current_surface_energy_type or 'unknown'}, "
+                f"energy={self._current_energy_type or 'unknown'}, "
                 f"surface={self._current_surface_source or 'none'}. "
                 f"{self._advisory_error or 'Check ML artifacts and dependencies.'}"
             )
@@ -286,15 +285,12 @@ class Performance3DWidget(QWidget):
 
         energy_type = str(recommendation["energy_type"])
         self._set_advisory_targets(recommendation)
-        surface = self._get_surface_for_energy_type(energy_type, recommendation)
+        self._current_energy_type = energy_type
+        surface = self._get_global_speed_surface(recommendation)
         surface_source = str(surface.get("source", "advisory"))
-        if (
-            energy_type != self._current_surface_energy_type
-            or self._current_surface_source != surface_source
-        ):
+        if self._current_surface_source != surface_source or not self._advisory_surface_scene:
             self._draw_advisory_surface(
                 surface,
-                energy_type=energy_type,
                 source=surface_source,
             )
         self._update_advisory_markers(recommendation)
@@ -314,7 +310,7 @@ class Performance3DWidget(QWidget):
         current_pred = _to_float(current.get("predicted_target_speed"), math.nan)
         recommended_pred = _to_float(recommended.get("predicted_target_speed"), math.nan)
         uplift = _to_float(recommended.get("predicted_uplift_pct"), math.nan)
-        energy_type = self._current_surface_energy_type or "unknown"
+        energy_type = self._current_energy_type or "unknown"
         surface_source = self._current_surface_source or "none"
 
         def fmt(value: float, precision: int = 4) -> str:
@@ -582,7 +578,7 @@ class Performance3DWidget(QWidget):
 
     def _init_advisory_engine(self) -> None:
         artifact_dir = SIMULATOR_ADVISORY_ARTIFACT_DIR
-        self._notebook_surfaces = load_notebook_surfaces(PROJECT_ROOT)
+        self._global_speed_surface = load_global_speed_surface(PROJECT_ROOT)
         ranges_path = artifact_dir / "surface_ranges_by_energy_type.json"
         if ranges_path.exists():
             with ranges_path.open("r", encoding="utf-8") as file:
@@ -650,21 +646,15 @@ class Performance3DWidget(QWidget):
             return True
         return self._advisory_update_index % self._advisory_update_stride == 0
 
-    def _get_surface_for_energy_type(self, energy_type: str, recommendation: dict) -> dict:
-        if energy_type in self._cached_surface_by_energy_type:
-            return self._cached_surface_by_energy_type[energy_type]
-
-        notebook_surface = self._notebook_surfaces.get(energy_type)
-        if notebook_surface is not None:
-            self._cached_surface_by_energy_type[energy_type] = notebook_surface
-            return notebook_surface
+    def _get_global_speed_surface(self, recommendation: dict) -> dict:
+        if self._global_speed_surface is not None:
+            return self._global_speed_surface
 
         fallback_surface = dict(recommendation["surface"])
-        fallback_surface["source"] = "advisory_fallback"
-        self._cached_surface_by_energy_type[energy_type] = fallback_surface
+        fallback_surface["source"] = "advisory_fallback_global"
         return fallback_surface
 
-    def _draw_advisory_surface(self, surface: dict, energy_type: str, source: str) -> None:
+    def _draw_advisory_surface(self, surface: dict, source: str) -> None:
         self._clear_surface_items()
         pressure_axis = np.asarray(surface["x"], dtype=float)
         pressure_rotation = np.asarray(surface["y"], dtype=float)
@@ -692,6 +682,9 @@ class Performance3DWidget(QWidget):
             "raw_speed": speed,
         }
 
+        # The model still uses rock energy quantiles as features, but the simulator
+        # shows a single global speed surface to avoid interpreting energy classes
+        # as separate clusters.
         surface_item = gl.GLSurfacePlotItem(
             x=x_axis,
             y=y_axis,
@@ -704,12 +697,8 @@ class Performance3DWidget(QWidget):
         self._surface_items.append(surface_item)
         self._add_surface_guides(x_axis, y_axis, z_values)
         self._add_surface_peak_marker(x_axis, y_axis, z_values, speed)
-        if (
-            energy_type != self._current_surface_energy_type
-            or source != self._current_surface_source
-        ):
+        if source != self._current_surface_source:
             self._reset_advisory_trajectory()
-        self._current_surface_energy_type = energy_type
         self._current_surface_source = source
 
     def _update_advisory_markers(self, recommendation: dict) -> None:
@@ -736,38 +725,28 @@ class Performance3DWidget(QWidget):
 
     def _draw_advisory_preview_surface_if_needed(self, telemetry_row: dict) -> None:
         energy_type = str(telemetry_row.get("rock_energy_type_final", "unknown"))
-        notebook_surface = self._cached_surface_by_energy_type.get(energy_type)
-        if notebook_surface is None:
-            notebook_surface = self._notebook_surfaces.get(energy_type)
-            if notebook_surface is not None:
-                self._cached_surface_by_energy_type[energy_type] = notebook_surface
-        if notebook_surface is not None:
-            source = str(notebook_surface.get("source", "notebook_plotly_surface"))
-            if (
-                energy_type == self._current_surface_energy_type
-                and self._current_surface_source == source
-            ):
+        self._current_energy_type = energy_type
+        if self._global_speed_surface is not None:
+            source = str(self._global_speed_surface.get("source", "global_speed_surface"))
+            if self._current_surface_source == source and self._advisory_surface_scene:
                 return
             self._draw_advisory_surface(
-                notebook_surface,
-                energy_type=energy_type,
+                self._global_speed_surface,
                 source=source,
             )
             return
-        if (
-            energy_type == self._current_surface_energy_type
-            and self._current_surface_source == "advisory_fallback"
-        ):
+        if self._current_surface_source == "advisory_fallback_global" and self._advisory_surface_scene:
             return
         self._draw_advisory_preview_surface(telemetry_row)
 
     def _draw_advisory_preview_surface(self, telemetry_row: dict) -> None:
         self._clear_surface_items()
         energy_type = str(telemetry_row.get("rock_energy_type_final", "unknown"))
+        self._current_energy_type = energy_type
         p_ax = _to_float(telemetry_row.get("pressure_axis"))
         p_rot = _to_float(telemetry_row.get("pressure_rotation"))
         speed = _to_float(telemetry_row.get("speed"))
-        ranges = self._surface_ranges_for_energy(energy_type, p_ax, p_rot, speed)
+        ranges = self._global_surface_ranges(p_ax, p_rot, speed)
         self._advisory_surface_bounds = ranges
 
         x_axis = np.linspace(-self.surface_size_x / 2, self.surface_size_x / 2, 24)
@@ -811,13 +790,9 @@ class Performance3DWidget(QWidget):
         self._surface_items.append(surface_item)
         self._add_surface_guides(x_axis, y_axis, z_values)
         self._add_surface_peak_marker(x_axis, y_axis, z_values, z_values)
-        if (
-            energy_type != self._current_surface_energy_type
-            or self._current_surface_source != "advisory_fallback"
-        ):
+        if self._current_surface_source != "advisory_fallback_global":
             self._reset_advisory_trajectory()
-        self._current_surface_energy_type = energy_type
-        self._current_surface_source = "advisory_fallback"
+        self._current_surface_source = "advisory_fallback_global"
 
     def _update_advisory_preview_marker(self, telemetry_row: dict) -> None:
         if not self._advisory_surface_bounds:
@@ -854,19 +829,24 @@ class Performance3DWidget(QWidget):
         else:
             self._advisory_current_marker.setData(pos=current_array)
 
-    def _surface_ranges_for_energy(
+    def _global_surface_ranges(
         self,
-        energy_type: str,
         pressure_axis: float,
         pressure_rotation: float,
         speed: float,
     ) -> dict[str, float]:
-        ranges = self._advisory_surface_ranges.get(energy_type, {})
-        x_min = float(ranges.get("pressure_axis_q05", pressure_axis * 0.92))
-        x_max = float(ranges.get("pressure_axis_q95", pressure_axis * 1.08))
-        y_min = float(ranges.get("pressure_rotation_q05", pressure_rotation * 0.92))
-        y_max = float(ranges.get("pressure_rotation_q95", pressure_rotation * 1.08))
-        speed_median = float(ranges.get("speed_median", speed))
+        range_values = list(self._advisory_surface_ranges.values())
+        x_lows = [float(r["pressure_axis_q05"]) for r in range_values if "pressure_axis_q05" in r]
+        x_highs = [float(r["pressure_axis_q95"]) for r in range_values if "pressure_axis_q95" in r]
+        y_lows = [float(r["pressure_rotation_q05"]) for r in range_values if "pressure_rotation_q05" in r]
+        y_highs = [float(r["pressure_rotation_q95"]) for r in range_values if "pressure_rotation_q95" in r]
+        speeds = [float(r["speed_median"]) for r in range_values if "speed_median" in r]
+
+        x_min = min(x_lows) if x_lows else pressure_axis * 0.92
+        x_max = max(x_highs) if x_highs else pressure_axis * 1.08
+        y_min = min(y_lows) if y_lows else pressure_rotation * 0.92
+        y_max = max(y_highs) if y_highs else pressure_rotation * 1.08
+        speed_median = float(np.nanmedian(speeds)) if speeds else speed
         z_min = min(speed, speed_median) * 0.82
         z_max = max(speed, speed_median) * 1.18
         if abs(z_max - z_min) < 1e-9:
