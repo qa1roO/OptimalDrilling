@@ -15,36 +15,16 @@
   "hardness_base_signal": "log_pseudo_mse_roll_median_30",
   "hardness_formula": "zscore(log_pseudo_mse_roll_median_30)",
   "energy_quantile_source": "hardness_score_smooth segment median",
-  "surface_method": "smoothed_empirical_binned_median_surface",
-  "surface_target": "per-energy first available candidate",
-  "surface_target_candidates": [
-    "speed_roll_median_30",
-    "speed_roll_mean_30",
-    "speed_roll_median_12",
-    "speed"
-  ],
-  "surface_grid_size": 40,
-  "surface_min_bin_count": 5,
-  "surface_smooth_sigma": 1.6,
-  "surface_z_clip_quantiles": [
-    0.02,
-    0.98
-  ],
-  "surface_axis_quantiles": [
-    0.05,
-    0.95
-  ],
-  "surface_interpolation": "pandas linear interpolation followed by weighted gaussian smoothing over binned median grid",
-  "surface_report_path": "rock_energy_segment_reports\\surface_empirical_report.csv",
   "simulator_visual_surface_method": "global_smoothed_empirical_binned_median_speed_surface",
   "simulator_visual_surface_path": "plotly_surfaces_html\\global_speed_surface.json",
   "simulator_visual_surface_report_path": "rock_energy_segment_reports\\global_speed_surface_report.csv",
-  "depth_column": "depth_m",
+  "depth_column": "depth",
+  "d_depth_column": "d_depth",
+  "d_time_column": "d_time",
   "interpretation": {
     "hardness_score_smooth": "stable operational drilling resistance index based on smoothed log-pseudo-MSE",
     "rock_energy_type_final": "final discrete energy-response regime from segment-level quantile segmentation",
     "pseudo_mse": "proxy energy per penetration, not physical MSE",
-    "plotly_surfaces": "legacy per-energy smoothed empirical surfaces; simulator 3D now uses a single global speed surface",
     "simulator_visual_surface": "single global speed response surface; energy classes remain model features and context"
   }
 }
