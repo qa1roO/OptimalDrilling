@@ -1,6 +1,48 @@
-/datasets/*.xlsx
+# Python caches and local environments
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Jupyter local state
 .ipynb_checkpoints/
-/venv
-notebooks/*.csv
+
+# Local virtual environments
+venv/
+.venv/
+env/
+.env/
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+*.bak
+*.old
+*~
+
+# IDE/editor state
+.idea/
+.vscode/
+.DS_Store
+
+# Generated ad-hoc exports. Final tracked reports/artifacts are kept explicitly.
+*_profile.html
+*_tmp.html
+*_export.html
+notebooks/plotly_surfaces_html/*.html
+notebooks/*_tmp.csv
+notebooks/*_temp.csv
+notebooks/*_debug.csv
+notebooks/*_tmp.json
+notebooks/*_temp.json
+notebooks/*_debug.json
+
+# Archive files are intentionally kept for traceability even if their names
+# match generated-export patterns above.
+!archive/
+!archive/**

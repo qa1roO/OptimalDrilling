@@ -579,7 +579,7 @@ class Performance3DWidget(QWidget):
     def _init_advisory_engine(self) -> None:
         artifact_dir = SIMULATOR_ADVISORY_ARTIFACT_DIR
         self._global_speed_surface = load_global_speed_surface(PROJECT_ROOT)
-        ranges_path = artifact_dir / "surface_ranges_by_energy_type.json"
+        ranges_path = artifact_dir / "candidate_pressure_ranges_by_energy_type.json"
         if ranges_path.exists():
             with ranges_path.open("r", encoding="utf-8") as file:
                 self._advisory_surface_ranges = json.load(file)

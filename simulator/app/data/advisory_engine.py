@@ -55,7 +55,7 @@ class AdvisoryEngine:
 
         self.feature_config = _read_json(self.artifact_dir / "feature_config.json")
         self.optimizer_config = _read_json(self.artifact_dir / "optimizer_config.json")
-        self.surface_ranges = _read_json(self.artifact_dir / "surface_ranges_by_energy_type.json")
+        self.surface_ranges = _read_json(self.artifact_dir / "candidate_pressure_ranges_by_energy_type.json")
 
         self.base_numeric_features = list(self.feature_config["base_numeric_features"])
         self.categorical_features = list(self.feature_config["categorical_features"])

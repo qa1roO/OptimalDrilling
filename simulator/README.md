@@ -11,7 +11,7 @@ The application starts from `run.py`, creates `SimulatorMainWindow`, and shows t
 
 The main runtime path is replay/advisory mode:
 
-1. `SideViewWidget` reads replay telemetry from `united_rock_energy_segment_quantile.csv` when it is available.
+1. `SideViewWidget` reads replay telemetry from `telemetry_with_energy_quantiles.csv` when it is available.
 2. It emits `replay_sample(row, depth_m)` while the rig animation advances.
 3. `Performance3DWidget.append_advisory_telemetry()` updates the 2D charts and the 3D global speed response surface.
 4. `AdvisoryEngine` loads joblib/LightGBM artifacts from `app/ml_artifacts`.

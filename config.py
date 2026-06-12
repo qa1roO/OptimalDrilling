@@ -8,19 +8,18 @@ NOTEBOOKS_DIR = PROJECT_ROOT / "notebooks"
 SIMULATOR_DIR = PROJECT_ROOT / "simulator"
 
 RAW_DATA_PATH = DATASETS_DIR / "united.csv"
-LABELED_DATA_PATH = NOTEBOOKS_DIR / "united_rock_energy_segment_quantile.csv"
+LABELED_DATA_PATH = NOTEBOOKS_DIR / "telemetry_with_energy_quantiles.csv"
 
-ROCK_ENERGY_CONFIG_PATH = NOTEBOOKS_DIR / "rock_energy_segment_quantile_config.json"
+ROCK_ENERGY_CONFIG_PATH = NOTEBOOKS_DIR / "energy_segmentation_config.json"
 ROCK_ENERGY_ARTIFACT_DIR = NOTEBOOKS_DIR / "rock_energy_segment_quantile_artifacts"
-ROCK_ENERGY_REPORT_DIR = NOTEBOOKS_DIR / "rock_energy_segment_reports"
-PLOTLY_SURFACES_DIR = NOTEBOOKS_DIR / "plotly_surfaces_html"
+PLOTLY_SURFACES_DIR = NOTEBOOKS_DIR / "surface_data"
 
-DRILLING_ADVISORY_ARTIFACT_DIR = NOTEBOOKS_DIR / "drilling_advisory_light_penalty_artifacts"
-DRILLING_ADVISORY_REPORT_DIR = NOTEBOOKS_DIR / "drilling_advisory_light_penalty_reports"
+DRILLING_ADVISORY_ARTIFACT_DIR = NOTEBOOKS_DIR / "model_artifacts"
+DRILLING_ADVISORY_REPORT_DIR = NOTEBOOKS_DIR / "model_reports"
 
 SIMULATOR_ML_ARTIFACT_ROOT = SIMULATOR_DIR / "app" / "ml_artifacts"
 SIMULATOR_ADVISORY_ARTIFACT_DIR = (
-    SIMULATOR_ML_ARTIFACT_ROOT / "drilling_advisory_light_penalty_artifacts"
+    SIMULATOR_ML_ARTIFACT_ROOT / "model_artifacts"
 )
 
 ENERGY_LABELS_4 = [
@@ -59,7 +58,6 @@ def ensure_output_dirs() -> None:
     """Create repository output folders used by notebooks."""
     for path in [
         ROCK_ENERGY_ARTIFACT_DIR,
-        ROCK_ENERGY_REPORT_DIR,
         PLOTLY_SURFACES_DIR,
         DRILLING_ADVISORY_ARTIFACT_DIR,
         DRILLING_ADVISORY_REPORT_DIR,

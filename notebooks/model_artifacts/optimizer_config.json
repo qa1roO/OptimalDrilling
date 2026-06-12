@@ -1,0 +1,16 @@
+{
+  "optimizer_mode": "light_penalty",
+  "target_horizons": [
+    5
+  ],
+  "default_horizon": 5,
+  "grid_size_default": 21,
+  "max_delta_frac_default": 0.08,
+  "change_penalty_weight": 0.01,
+  "boundary_penalty_weight": 0.02,
+  "boundary_start": 0.85,
+  "score_formula": "pred_target_speed - change_penalty - boundary_penalty",
+  "well_level_method": "non_overlap_near5",
+  "well_level_formula": "model_block_time = sum(d_depth over t+1...t+5) / recommended_predicted_speed_near5_at_anchor",
+  "operator_comparison_interpretation": "offline counterfactual diagnostics; not a measured causal effect"
+}

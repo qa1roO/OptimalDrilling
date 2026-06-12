@@ -11,7 +11,7 @@ CHART_SPEED_AXIS_RANGE = (0.0, 0.0409571428571429)
 
 # Full replay CSV statistics used to derive the chart ranges above.
 REPLAY_CSV_STATS = {
-    "source": "notebooks/united_rock_energy_segment_quantile.csv",
+    "source": "notebooks/telemetry_with_energy_quantiles.csv",
     "rows": 415_049,
     "rotation_min": 50.01,
     "rotation_max": 139.578,
