@@ -1,0 +1,19 @@
+{
+  "checks_passed": true,
+  "unit_tests_passed": 20,
+  "train_wells": 1279,
+  "excluded_original_test_wells": 427,
+  "predictive_variants": 11,
+  "policy_variants": 13,
+  "eligible_rows_per_variant": 290975,
+  "matched_blocks_per_policy": 3837,
+  "production_artifacts_unchanged": true,
+  "source_data_hash_matches": true,
+  "original_study_code_hashes_match": true,
+  "gmm_bic_best_k_by_phase": {
+    "9": 4,
+    "19": 4,
+    "29": 4
+  },
+  "note": "Supplementary GMM transform received a tested all-missing-input guard after execution; the experiment used only valid index rows."
+}

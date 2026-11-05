@@ -1,0 +1,20 @@
+{
+  "mean": 18.610776274581482,
+  "std": 0.4152566279758994,
+  "cutpoints": [
+    18.362234871747475,
+    18.649465289883377,
+    18.844161095582784
+  ],
+  "schema_version": 2,
+  "method": "trailing_30_median_current_quantile_train_only",
+  "window": 30,
+  "min_periods": 10,
+  "labels": [
+    "soft_low_energy",
+    "medium_low_energy",
+    "medium_high_energy",
+    "hard_high_energy"
+  ],
+  "fit_scope": "training_wells_only"
+}

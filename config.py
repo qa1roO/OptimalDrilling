@@ -31,7 +31,9 @@ ENERGY_LABELS_4 = [
 
 REQUIRED_TELEMETRY_COLUMNS = [
     "processing_time",
-    "depth_m",
+    "depth",
+    "d_depth",
+    "d_time",
     "well_id",
     "pressure_axis",
     "pressure_rotation",

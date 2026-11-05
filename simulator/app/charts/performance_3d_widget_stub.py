@@ -119,7 +119,7 @@ class Performance3DWidget(QWidget):
         else:
             warning = QLabel(
                 "Chart backend is unavailable.\n"
-                "Install dependencies from requirements.txt.",
+                "Install dependencies with uv sync from the repository root.",
                 self,
             )
             warning.setStyleSheet("padding: 16px; color: #8a1f1f;")

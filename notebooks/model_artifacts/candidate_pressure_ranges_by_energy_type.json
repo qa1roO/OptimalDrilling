@@ -1,30 +1,32 @@
 {
+  "__global__": {
+    "pressure_axis_q05": 8304.0,
+    "pressure_axis_q95": 22402.0,
+    "pressure_rotation_q05": 8712.0,
+    "pressure_rotation_q95": 18780.0
+  },
   "hard_high_energy": {
-    "pressure_axis_q05": 12328.5,
-    "pressure_axis_q95": 22797.0,
-    "pressure_rotation_q05": 9394.0,
-    "pressure_rotation_q95": 18724.0,
-    "rows": 71571
+    "pressure_axis_q05": 12468.25,
+    "pressure_axis_q95": 22773.75,
+    "pressure_rotation_q05": 9296.0,
+    "pressure_rotation_q95": 18603.0
   },
   "medium_high_energy": {
-    "pressure_axis_q05": 13038.7,
-    "pressure_axis_q95": 22642.149999999994,
-    "pressure_rotation_q05": 9885.85,
-    "pressure_rotation_q95": 18884.0,
-    "rows": 72898
+    "pressure_axis_q05": 13390.45,
+    "pressure_axis_q95": 22669.0,
+    "pressure_rotation_q05": 10140.0,
+    "pressure_rotation_q95": 18833.550000000003
   },
   "medium_low_energy": {
-    "pressure_axis_q05": 9326.0,
-    "pressure_axis_q95": 22311.449999999997,
-    "pressure_rotation_q05": 9027.0,
-    "pressure_rotation_q95": 18984.449999999997,
-    "rows": 72892
+    "pressure_axis_q05": 9927.0,
+    "pressure_axis_q95": 22307.0,
+    "pressure_rotation_q05": 9200.0,
+    "pressure_rotation_q95": 19098.75
   },
   "soft_low_energy": {
-    "pressure_axis_q05": 5742.6,
-    "pressure_axis_q95": 21275.0,
-    "pressure_rotation_q05": 7696.65,
-    "pressure_rotation_q95": 18421.0,
-    "rows": 73614
+    "pressure_axis_q05": 5444.6,
+    "pressure_axis_q95": 21209.0,
+    "pressure_rotation_q05": 7626.0,
+    "pressure_rotation_q95": 18435.0
   }
 }

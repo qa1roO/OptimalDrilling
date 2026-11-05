@@ -1405,8 +1405,9 @@ def _is_valid_replay_row(row: dict) -> bool:
         "pressure_rotation",
         "rotation",
         "speed",
-        "hardness_score_smooth",
-        "rock_energy_type_final",
+        "depth",
+        "d_depth",
+        "d_time",
     )
     return all(row.get(column) not in (None, "") for column in required)
 

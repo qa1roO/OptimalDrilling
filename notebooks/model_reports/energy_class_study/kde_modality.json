@@ -1,0 +1,23 @@
+[
+  {
+    "bandwidth_multiplier": 0.7,
+    "modes_5pct_prominence": 1,
+    "peak_positions_log_index": [
+      18.733142043560793
+    ]
+  },
+  {
+    "bandwidth_multiplier": 1.0,
+    "modes_5pct_prominence": 1,
+    "peak_positions_log_index": [
+      18.7242056597631
+    ]
+  },
+  {
+    "bandwidth_multiplier": 1.4,
+    "modes_5pct_prominence": 1,
+    "peak_positions_log_index": [
+      18.71526927596541
+    ]
+  }
+]

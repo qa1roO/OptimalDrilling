@@ -1,0 +1,12 @@
+{
+  "mean": 18.610776274581482,
+  "std": 0.4152566279758994,
+  "cuts_log_index": [
+    18.649465289883377
+  ],
+  "k": 2,
+  "cutpoints_z": [
+    0.09316892903185651
+  ],
+  "fit_scope": "selector_fitting_wells_only"
+}

@@ -1,5 +1,6 @@
 {
-  "data_path": "/home/alex/Desktop/OptimalDrilling/notebooks/telemetry_with_energy_quantiles.csv",
+  "schema_version": 2,
+  "backend": "lightgbm",
   "target_horizons": [
     5
   ],
@@ -35,6 +36,39 @@
     "pressure_rotation_diff1",
     "rotation_diff1",
     "speed_diff1"
+  ],
+  "speed_numeric_features": [
+    "pressure_axis",
+    "pressure_rotation",
+    "pressure_balance",
+    "rotation",
+    "speed",
+    "dt",
+    "rotation_efficiency",
+    "axis_x_rotation",
+    "energy_input_proxy",
+    "hardness_score_smooth",
+    "pressure_axis_lag1",
+    "pressure_axis_lag3",
+    "pressure_axis_lag6",
+    "rotation_lag1",
+    "rotation_lag3",
+    "rotation_lag6",
+    "speed_lag1",
+    "speed_lag3",
+    "pressure_axis_roll_mean_12",
+    "pressure_axis_roll_std_12",
+    "pressure_rotation_roll_mean_12",
+    "pressure_rotation_roll_std_12",
+    "rotation_roll_mean_12",
+    "rotation_roll_std_12",
+    "speed_roll_mean_12",
+    "speed_roll_std_12",
+    "pressure_axis_diff1",
+    "pressure_rotation_diff1",
+    "rotation_diff1",
+    "speed_diff1",
+    "candidate_target_rotation"
   ],
   "categorical_features": [
     "rock_energy_type_final"
@@ -106,14 +140,21 @@
     "candidate_target_rotation",
     "rock_energy_type_final"
   ],
+  "energy_type_column": "rock_energy_type_final",
   "speed_extra_features": [
     "candidate_target_rotation"
   ],
-  "hardness_feature_columns": [
-    "hardness_score_smooth"
+  "required_live_columns": [
+    "well_id",
+    "processing_time",
+    "depth",
+    "d_depth",
+    "d_time",
+    "pressure_axis",
+    "pressure_rotation",
+    "rotation",
+    "speed"
   ],
-  "energy_type_column": "rock_energy_type_final",
-  "depth_column": "depth",
-  "d_depth_column": "d_depth",
-  "d_time_column": "d_time"
+  "target_speed_formula": "sum(future d_depth)/sum(future d_time)",
+  "speed_training_rotation": "three-fold GroupKFold OOF predictions"
 }

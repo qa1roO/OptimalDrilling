@@ -17,6 +17,9 @@ venv/
 env/
 .env/
 
+# Reproducible fitted models used only by the energy-class study.
+notebooks/model_reports/energy_class_study/cache/
+
 # Logs and temporary files
 *.log
 *.tmp
